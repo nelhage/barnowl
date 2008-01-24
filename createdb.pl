@@ -42,6 +42,11 @@ my $messages = DBIx::DBSchema::Table->new({
             length => 10,
             null   => 0,
            }),
+        DBIx::DBSchema::Column->new({
+            name    => 'deleted',
+            type    => 'bool',
+            default => 'false'
+           })
         ],
     'index'       => DBIx::DBSchema::ColGroup::Index->new([
         ]),
