@@ -18,20 +18,22 @@ use DBIx::Simple;
 use SQL::Abstract;
 use JSON;
 use POSIX qw(ctime);
+use Cache::Memory;
 
 my $MESSAGES = 'messages';
 my $message_fields = [qw(id msg_time protocol body direction)];
 my $ATTRS = 'attributes';
 my $attr_fields    = [qw(message_id key value)];
 
-__PACKAGE__->mk_ro_accessors(qw(db));
+__PACKAGE__->mk_ro_accessors(qw(db cache));
 __PACKAGE__->mk_accessors(qw(msg_iter attr_iter attr_lookahead _next_id));
 
 sub new {
     my $class = shift;
     my $db = DBIx::Simple->new("DBI:SQLite:dbname=$ENV{HOME}/.owl/messagedb",
                              {RaiseError => 1, AutoCommit => 1});
-    my $self = {db => $db};
+    my $cache = Cache::Memory->new(default_expires => '30 sec');
+    my $self = {db => $db, cache => $cache};
     bless($self, $class);
 
     my $maxq = $self->db->query("SELECT MAX(id) FROM $MESSAGES")
@@ -110,6 +112,7 @@ sub start_iterate {
 sub iterate_next {
     my $self = shift;
     my %msg;
+    my $msg;
     my $next = $self->msg_iter->fetch;
     unless($next) {
         return undef;
@@ -123,14 +126,21 @@ sub iterate_next {
         load_attr(\%msg, $attr);
         $attr = $self->attr_iter->fetch;
     }
-    return BarnOwl::Message->new(%msg);
+    $msg = BarnOwl::Message->new(%msg);
+    $self->cache->set($msg->id => $msg);
+    return $msg;
 }
 
 sub get_by_id {
     my $self = shift;
     my $id = shift;
+    my $msg;
     my %msg;
-    my $msg = $self->db->select($MESSAGES, $message_fields, {id => $id})
+
+    $msg = $self->cache->get($id);
+    if($msg) { return $msg; }
+
+    $msg = $self->db->select($MESSAGES, $message_fields, {id => $id})
       or die($self->db->error);
     my $attrs = $self->db->select($ATTRS, $attr_fields, {message_id => $id})
       or die($self->db->error);
@@ -142,7 +152,10 @@ sub get_by_id {
     while(my $row = $attrs->fetch) {
         load_attr(\%msg, $row);
     }
-    return BarnOwl::Message->new(%msg);
+
+    $msg = BarnOwl::Message->new(%msg);
+    $self->cache->set($msg->id => $msg);
+    return $msg;
 }
 
 sub add_message {
