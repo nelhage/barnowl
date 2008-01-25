@@ -129,8 +129,13 @@ sub iterate_next {
     my $self = shift;
     my %msg;
     my $msg;
+    return undef unless $self->msg_iter;
     my $next = $self->msg_iter->fetch;
     unless($next) {
+        $self->msg_iter->finish;
+        $self->attr_iter->finish;
+        $self->msg_iter(undef);
+        $self->attr_iter(undef);
         return undef;
     }
     load_base(\%msg, $next);
