@@ -163,6 +163,7 @@ sub _shutdown {
     $shutdown->run;
     
     BarnOwl::shutdown() if *BarnOwl::shutdown{CODE};
+    BarnOwl::message_list()->close;
 }
 
 sub _receive_msg {

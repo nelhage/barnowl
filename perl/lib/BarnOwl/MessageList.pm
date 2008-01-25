@@ -156,4 +156,8 @@ sub expunge {
     $self->{keys} = [sort {$a <=> $b} keys %{$self->{messages}}];
 }
 
+sub close {
+    
+}
+
 1;

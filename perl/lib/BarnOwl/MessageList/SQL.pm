@@ -212,5 +212,10 @@ sub expunge {
     $self->deleted({});
 }
 
+sub close {
+    my $self = shift;
+    $self->db->disconnect;
+}
+
 1;
 
