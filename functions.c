@@ -966,6 +966,8 @@ void owl_function_quit()
     owl_aim_logout();
   }
 
+  owl_perlconfig_shutdown();
+
   /* done with curses */
   endwin();
 

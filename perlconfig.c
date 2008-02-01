@@ -148,7 +148,7 @@ char *owl_perlconfig_initperl(char * file, int *Pargc, char ***Pargv, char *** P
   int ret;
   PerlInterpreter *p;
   char *err;
-  char *args[4] = {"", "-e", "0;", NULL};
+  char *args[] = {"", "-e", "0;", NULL};
   AV *inc;
   char *path;
 
@@ -160,7 +160,7 @@ char *owl_perlconfig_initperl(char * file, int *Pargc, char ***Pargv, char *** P
 
   owl_global_set_no_have_config(&g);
 
-  ret=perl_parse(p, owl_perl_xs_init, 2, args, NULL);
+  ret=perl_parse(p, owl_perl_xs_init, sizeof(args)/sizeof(*args) - 1, args, NULL);
   if (ret || SvTRUE(ERRSV)) {
     err=owl_strdup(SvPV_nolen(ERRSV));
     sv_setsv(ERRSV, &PL_sv_undef);     /* and clear the error */
@@ -216,6 +216,13 @@ char *owl_perlconfig_initperl(char * file, int *Pargc, char ***Pargv, char *** P
   }
 
   return(NULL);
+}
+
+void owl_perlconfig_shutdown() {
+  PerlInterpreter *p;
+  p = owl_global_get_perlinterp(&g);
+  perl_destruct(p);
+  perl_free(p);
 }
 
 /* returns whether or not a function exists */
