@@ -248,6 +248,7 @@ sub expunge {
     }
     $self->db->commit;
     $self->deleted({});
+    $self->cache->remove($SIZE_KEY);
 }
 
 sub close {
