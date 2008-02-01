@@ -31,10 +31,29 @@ my $SIZE_KEY = '__size';
 __PACKAGE__->mk_ro_accessors(qw(db cache));
 __PACKAGE__->mk_accessors(qw(msg_iter attr_iter attr_lookahead _next_id deleted));
 
+sub load_dbconfig {
+    my %conf = ();
+    my $confpath = BarnOwl::get_config_dir() . "/sql";
+    open(my $fh, "<", $confpath) or die("Unable to read $confpath: $!");
+    while(my $line = <$fh>) {
+        chomp($line);
+        my ($k, $v) = split(/\s*:\s*/, $line, 2);
+        $conf{$k} = $v;
+    }
+    close($fh);
+    my $driver = delete $conf{driver} || 'SQLite';
+    my $user = delete $conf{user};
+    my $pass = delete $conf{password};
+    $conf{dbname} ||= ($conf{database} || (BarnOwl::get_config_dir() . "/messagedb"));
+    my $dsn = "dbi:$driver:" .
+       join(';', map { $_ ."=".$conf{$_} } grep { defined $conf{$_} } keys %conf);
+    return ($dsn, $user, $pass);
+}
+
 sub new {
     my $class = shift;
-    my $db = DBIx::Simple->new("DBI:SQLite:dbname=$ENV{HOME}/.owl/messagedb",
-                               "", "",
+    my ($dsn, $user, $pass) = load_dbconfig();
+    my $db = DBIx::Simple->new($dsn, $user, $pass,
                              {RaiseError => 1, AutoCommit => 1});
     my $cache = Cache::Memory->new(default_expires => '30 sec');
     my $self = {db => $db, cache => $cache, deleted => {}};
