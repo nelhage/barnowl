@@ -34,13 +34,14 @@ __PACKAGE__->mk_accessors(qw(msg_iter attr_iter attr_lookahead _next_id deleted)
 sub load_dbconfig {
     my %conf = ();
     my $confpath = BarnOwl::get_config_dir() . "/sql";
-    open(my $fh, "<", $confpath) or die("Unable to read $confpath: $!");
-    while(my $line = <$fh>) {
-        chomp($line);
-        my ($k, $v) = split(/\s*:\s*/, $line, 2);
-        $conf{$k} = $v;
+    if (open( my $fh, "<", $confpath )) {
+        while ( my $line = <$fh> ) {
+            chomp($line);
+            my ( $k, $v ) = split( /\s*:\s*/, $line, 2 );
+            $conf{$k} = $v;
+        }
+        close($fh);
     }
-    close($fh);
     my $driver = delete $conf{driver} || 'SQLite';
     my $user = delete $conf{user};
     my $pass = delete $conf{password};
