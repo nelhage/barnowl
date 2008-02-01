@@ -101,7 +101,7 @@ sub get_size {
     my $self = shift;
     my $cnt;
     if($cnt = $self->cache->get($SIZE_KEY)) {
-        return $cnt;
+        # return $cnt;
     }
     my $count = $self->db->query("SELECT COUNT(id) from $MESSAGES WHERE expunged='false'")
       or die("Can't SELECT COUNT:" . $self->db->error);
@@ -167,6 +167,7 @@ sub iterate_next {
         return undef;
     }
     load_base(\%msg, $next);
+    BarnOwl::debug('iterate ' . $msg{id});
     my $attr = $self->attr_lookahead;
     while($attr && $attr->[0] < $msg{id}) {
         $attr = $self->attr_iter->fetch;
@@ -243,7 +244,7 @@ sub expunge {
     my $self = shift;
     $self->db->begin_work;
     for my $id (keys %{$self->deleted}) {
-        $self->db->update($MESSAGES, {expunged => 1}, {id => $id});
+        $self->db->update($MESSAGES, {expunged => 'true'}, {id => $id});
     }
     $self->db->commit;
     $self->deleted({});
