@@ -19,11 +19,14 @@ use SQL::Abstract;
 use JSON;
 use POSIX qw(ctime);
 use Cache::Memory;
+use Time::HiRes qw(time);
 
 my $MESSAGES = 'messages';
 my $message_fields = [qw(id msg_time protocol body direction)];
 my $ATTRS = 'attributes';
 my $attr_fields    = [qw(message_id key value)];
+
+my $SIZE_KEY = '__size';
 
 __PACKAGE__->mk_ro_accessors(qw(db cache));
 __PACKAGE__->mk_accessors(qw(msg_iter attr_iter attr_lookahead _next_id deleted));
@@ -76,9 +79,14 @@ sub next_id {
 
 sub get_size {
     my $self = shift;
-    my $count = $self->db->query("SELECT COUNT(*) from $MESSAGES WHERE expunged='false'")
+    my $cnt;
+    if($cnt = $self->cache->get($SIZE_KEY)) {
+        return $cnt;
+    }
+    my $count = $self->db->query("SELECT COUNT(id) from $MESSAGES WHERE expunged='false'")
       or die("Can't SELECT COUNT:" . $self->db->error);
-    my $cnt = $count->fetch->[0];
+    $cnt = $count->fetch->[0];
+    $self->cache->set($SIZE_KEY => $cnt);
     return $cnt;
 }
 
@@ -149,7 +157,7 @@ sub iterate_next {
     }
     $msg{deleted} = 1 if($self->deleted->{$msg{id}});
     $msg = BarnOwl::Message->new(%msg);
-    $self->cache->set($msg{id} => $msg);
+    # $self->cache->set($msg{id} => $msg);
     return $msg;
 }
 
@@ -159,7 +167,9 @@ sub get_by_id {
     my $msg;
     my %msg;
 
+    my $start = time;
     $msg = $self->cache->get($id);
+    BarnOwl::debug("cache-get($id): " . (time - $start));
     if($msg) { return $msg; }
 
     $msg = $self->db->select($MESSAGES, $message_fields, {id => $id})
@@ -178,6 +188,7 @@ sub get_by_id {
     $msg{deleted} = 1 if($self->deleted->{$msg{id}});
     $msg = BarnOwl::Message->new(%msg);
     $self->cache->set($id => $msg);
+    BarnOwl::debug("SQL-get($id): " . (time - $start));
     return $msg;
 }
 
@@ -205,6 +216,7 @@ sub add_message {
           or die($self->db->error);
     }
     $self->db->commit;
+    $self->cache->remove($SIZE_KEY);
 }
 
 sub expunge {
