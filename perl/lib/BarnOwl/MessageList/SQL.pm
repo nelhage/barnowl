@@ -101,7 +101,7 @@ sub get_size {
     my $self = shift;
     my $cnt;
     if($cnt = $self->cache->get($SIZE_KEY)) {
-        # return $cnt;
+        return $cnt;
     }
     my $count = $self->db->query("SELECT COUNT(id) from $MESSAGES WHERE expunged='false'")
       or die("Can't SELECT COUNT:" . $self->db->error);
