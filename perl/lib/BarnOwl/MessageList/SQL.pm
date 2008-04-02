@@ -176,7 +176,7 @@ sub iterate_next {
     load_base(\%msg, $next);
     BarnOwl::debug('iterate ' . $msg{id});
     my $attr = $self->attr_lookahead;
-    while($attr && $attr->[0] < $msg{id}) {
+    while($attr && $attr->[0] != $msg{id}) {
         $attr = $self->attr_iter->fetch;
     }
     while($attr && $attr->[0] == $msg{id}) {
