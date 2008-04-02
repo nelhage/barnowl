@@ -15,7 +15,7 @@ package BarnOwl::MessageList::SQL;
 use base qw(Class::Accessor);
 
 use DBIx::Simple;
-use SQL::Abstract;
+use SQL::Abstract::Limit;
 use JSON;
 use POSIX qw(ctime);
 use Cache::Memory;
@@ -56,6 +56,7 @@ sub new {
     my ($dsn, $user, $pass) = load_dbconfig();
     my $db = DBIx::Simple->new($dsn, $user, $pass,
                              {RaiseError => 1, AutoCommit => 1});
+    $db->abstract = SQL::Abstract::Limit->new(limit_dialect => $db->dbh);
     my $cache = Cache::Memory->new(default_expires => '30 sec');
     my $self = {db => $db, cache => $cache, deleted => {}};
     bless($self, $class);
@@ -141,14 +142,23 @@ sub load_attr {
     $msg->{$key} = $value;
 }
 
-sub start_iterate {
+sub iterate_begin {
     my $self = shift;
+    my $id   = shift;
+    my $rev  = shift;
+    my $dir   = $rev ? '<=' : '>=';
+    my @where = $id >= 0 ? ('id', {$dir => $id}) : ();
+    my $order = $rev ? "DESC" : "ASC";
     $self->msg_iter($self->db->select($MESSAGES, $message_fields,
-                                    {expunged => 'false'}, [qw(id)]))
+                                    {expunged => 'false',
+                                     @where}, ["id $order"]))
       or die("Unable to SELECT from messages: " . $self->db->error);
-    
+
+    if(@where) {
+        $where[0] = 'message_id';
+    }
     $self->attr_iter($self->db->select($ATTRS, $attr_fields,
-                                     {}, [qw(message_id)]))
+                                     {@where}, ["message_id $order"]))
       or die("Unable to SELECT from attrs: " . $self->db->error);
     $self->attr_lookahead($self->attr_iter->fetch);
 }
@@ -160,10 +170,7 @@ sub iterate_next {
     return undef unless $self->msg_iter;
     my $next = $self->msg_iter->fetch;
     unless($next) {
-        $self->msg_iter->finish;
-        $self->attr_iter->finish;
-        $self->msg_iter(undef);
-        $self->attr_iter(undef);
+        $self->iterate_done;
         return undef;
     }
     load_base(\%msg, $next);
@@ -180,6 +187,18 @@ sub iterate_next {
     $msg = BarnOwl::Message->new(%msg);
     # $self->cache->set($msg{id} => $msg);
     return $msg;
+}
+
+sub iterate_done {
+    my $self = shift;
+    if($self->msg_iter) {
+        $self->msg_iter->finish;
+        $self->msg_iter(undef);
+    }
+    if($self->attr_iter) {
+        $self->attr_iter->finish;
+        $self->attr_iter(undef);
+    }
 }
 
 sub get_by_id {
@@ -222,7 +241,7 @@ sub add_message {
         id        => $msg->id,
         msg_time  => $msg->{_time},
         protocol  => $msg->type,
-        body      => $msg->body,
+        body      => $msg->body || "",
         direction => $msg->direction
        })
       or die($self->db->error);
@@ -232,7 +251,7 @@ sub add_message {
         $self->db->insert($ATTRS, {
             message_id => $msg->id,
             key        => $k,
-            value      => $v
+            value      => $v || ""
            })
           or die($self->db->error);
     }
