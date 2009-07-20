@@ -214,8 +214,6 @@ void owl_function_adminmsg(char *header, char *body)
   if (owl_popwin_is_active(owl_global_get_popwin(&g))) {
     owl_popwin_refresh(owl_global_get_popwin(&g));
   }
-  wnoutrefresh(owl_global_get_curs_recwin(&g));
-  owl_global_set_needrefresh(&g);
 }
 
 /* Create an outgoing zephyr message and return a pointer to it.  Does
@@ -1283,7 +1281,7 @@ void owl_function_set_cursor(WINDOW *win)
 
 void owl_function_full_redisplay()
 {
-  redrawwin(owl_global_get_curs_recwin(&g));
+  redrawwin(g.mw.win.win);
   redrawwin(owl_global_get_curs_sepwin(&g));
   /* Work around curses segfualts with windows off the screen */
   if (g.lines >= owl_global_get_typwin_lines(&g)+2)
@@ -1291,7 +1289,7 @@ void owl_function_full_redisplay()
   if (g.lines >= 2)
       redrawwin(owl_global_get_curs_msgwin(&g));
 
-  wnoutrefresh(owl_global_get_curs_recwin(&g));
+  wnoutrefresh(g.mw.win.win);
   wnoutrefresh(owl_global_get_curs_sepwin(&g));
   wnoutrefresh(owl_global_get_curs_typwin(&g));
   wnoutrefresh(owl_global_get_curs_msgwin(&g));
@@ -1567,14 +1565,6 @@ void owl_function_page_curmsg(int step)
   lines=owl_message_get_numlines(m);
 
   if (offset==0) {
-    /* Bail if the curmsg isn't the last one displayed */
-    owl_message *cur = owl_view_iterator_get_message(owl_mainwin_get_last_msg(owl_global_get_mainwin(&g)));
-    if (!cur
-        || (owl_message_get_id(m) != owl_message_get_id(cur))) {
-      owl_function_makemsg("The entire message is already displayed");
-      return;
-    }
-    
     /* Bail if we're not truncated */
     if (!owl_mainwin_is_curmsg_truncated(owl_global_get_mainwin(&g))) {
       owl_function_makemsg("The entire message is already displayed");
@@ -1617,7 +1607,7 @@ void owl_function_mainwin_pagedown()
   owl_view_iterator *iter;
   iter = owl_view_iterator_free_later(owl_view_iterator_new());
 
-  owl_view_iterator_clone(iter, owl_mainwin_get_last_msg(owl_global_get_mainwin(&g)));
+  owl_view_iterator_clone(iter, owl_global_get_mainwin(&g)->end);
   if (!owl_view_iterator_is_valid(iter)) return;
   if (owl_mainwin_is_last_msg_truncated(owl_global_get_mainwin(&g))
       && (owl_view_iterator_cmp(owl_global_get_curmsg(&g), iter) < 0)) {
@@ -3558,8 +3548,7 @@ void owl_function_unmask_sigint(sigset_t *oldmask) {
 
 void _owl_function_mark_message(owl_message *m)
 {
-  if (m)
-    owl_global_set_markedmsgid(&g, owl_message_get_id(m));
+  owl_global_get_mainwin(&g)->mark = owl_message_get_id(m);
 }
 
 void owl_function_mark_message()
@@ -3584,7 +3573,7 @@ void owl_function_swap_cur_marked()
   int marked_id;
   owl_message *m;
 
-  marked_id=owl_global_get_markedmsgid(&g);
+  marked_id = owl_global_get_mainwin(&g)->mark;
   if (marked_id == -1) {
     owl_function_error("Mark not set.");
     return;

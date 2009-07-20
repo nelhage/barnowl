@@ -407,10 +407,18 @@ typedef struct _owl_view_iterator {
 typedef SV owl_view;
 typedef SV owl_view_iterator;
 
+typedef struct _owl_window {
+  WINDOW *win;
+  int lines, columns;
+} owl_window;
+
 typedef struct _owl_mainwin {
+  owl_window win;
   int curtruncated;
   int lasttruncated;
-  owl_view_iterator *lastdisplayed;
+  int cur_scroll;
+  owl_view_iterator *top, *current, *end;
+  int mark;
 } owl_mainwin;
 
 typedef struct _owl_history {
@@ -532,17 +540,13 @@ typedef struct _owl_global {
   owl_context ctx;
   owl_errqueue errqueue;
   int lines, cols;
-  owl_view_iterator *curmsg, *topmsg;
-  int markedmsgid;              /* for finding the marked message when it has moved. */
-  int curmsg_vert_offset;
   owl_view *current_view;
   owl_style *current_style;
   owl_messagelist *msglist;
-  WINDOW *recwin, *sepwin, *msgwin, *typwin;
+  WINDOW *sepwin, *msgwin, *typwin;
   int needrefresh;
   int rightshift;
   int resizepending;
-  int recwinlines;
   int typwinactive;
   char *thishost;
   char *homedir;

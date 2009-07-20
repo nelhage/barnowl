@@ -33,7 +33,6 @@ void owl_global_init(owl_global *g) {
   owl_context_init(&g->ctx);
   owl_context_set_startup(&g->ctx);
 
-  g->markedmsgid=-1;
   g->needrefresh=1;
   g->startupargs=NULL;
 
@@ -54,7 +53,6 @@ void owl_global_init(owl_global *g) {
   owl_list_create(&(g->puntlist));
   owl_list_create(&(g->messagequeue));
   owl_dict_create(&(g->styledict));
-  g->curmsg_vert_offset=0;
   g->resizepending=0;
   g->typwinactive=0;
   g->direction=OWL_DIRECTION_DOWNWARDS;
@@ -122,41 +120,46 @@ void owl_global_complete_setup(owl_global *g)
 {
   owl_mainwin_init(&(g->mw));
   g->msglist = owl_messagelist_new();
-  g->curmsg = owl_view_iterator_new();
-  g->topmsg = owl_view_iterator_new();
+}
+
+void owl_window_init(owl_window *win, int lines, int cols, int x, int y) {
+  win->win = newwin(lines, cols, x, y);
+  idlok(win->win, FALSE);
+  win->lines = lines;
+  win->columns = cols;
+}
+
+void owl_window_resize(owl_window *win, int lines, int cols) {
+  wresize(win->win, lines, cols);
+  win->lines = lines;
+  win->columns = cols;
 }
 
 void _owl_global_setup_windows(owl_global *g) {
   int cols, typwin_lines;
+  int recvlines;
 
   cols=g->cols;
   typwin_lines=owl_global_get_typwin_lines(g);
 
   /* set the new window sizes */
-  g->recwinlines=g->lines-(typwin_lines+2);
-  if (g->recwinlines<0) {
-    /* gotta deal with this */
-    g->recwinlines=0;
+  recvlines = g->lines-(typwin_lines+2);
+  if (recvlines < 0) {
+    recvlines = 0;
   }
 
-  owl_function_debugmsg("_owl_global_setup_windows: about to call newwin(%i, %i, 0, 0)\n", g->recwinlines, cols);
+  owl_function_debugmsg("_owl_global_setup_windows: about to call newwin(%i, %i, 0, 0)\n", g->mw.win.lines, cols);
 
   /* create the new windows */
-  g->recwin=newwin(g->recwinlines, cols, 0, 0);
-  if (g->recwin==NULL) {
-    owl_function_debugmsg("_owl_global_setup_windows: newwin returned NULL\n");
-    endwin();
-    exit(50);
-  }
-      
-  g->sepwin=newwin(1, cols, g->recwinlines, 0);
-  g->msgwin=newwin(1, cols, g->recwinlines+1, 0);
-  g->typwin=newwin(typwin_lines, cols, g->recwinlines+2, 0);
+  owl_window_init(&g->mw.win, recvlines, cols, 0, 0);
+
+  g->sepwin=newwin(1, cols, recvlines, 0);
+  g->msgwin=newwin(1, cols, recvlines+1, 0);
+  g->typwin=newwin(typwin_lines, cols, recvlines+2, 0);
 
   owl_editwin_set_curswin(&(g->tw), g->typwin, typwin_lines, g->cols);
 
   idlok(g->typwin, FALSE);
-  idlok(g->recwin, FALSE);
   idlok(g->sepwin, FALSE);
   idlok(g->msgwin, FALSE);
 
@@ -180,17 +183,17 @@ int owl_global_get_cols(owl_global *g) {
 }
 
 int owl_global_get_recwin_lines(owl_global *g) {
-  return(g->recwinlines);
+  return g->mw.win.lines;
 }
 
 /* curmsg */
 
 owl_view_iterator* owl_global_get_curmsg(owl_global *g) {
-  return g->curmsg;
+  return g->mw.current;
 }
 
 void owl_global_set_curmsg(owl_global *g, owl_view_iterator *it) {
-  owl_view_iterator_clone(g->curmsg, it);
+  owl_view_iterator_clone(g->mw.current, it);
   /* we will reset the vertical offset from here */
   /* we might want to move this out to the functions later */
   owl_global_set_curmsg_vert_offset(g, 0);
@@ -199,33 +202,15 @@ void owl_global_set_curmsg(owl_global *g, owl_view_iterator *it) {
 /* topmsg */
 
 owl_view_iterator* owl_global_get_topmsg(owl_global *g) {
-  return g->topmsg;
+  return g->mw.top;
 }
 
 void owl_global_set_topmsg(owl_global *g, owl_view_iterator *it) {
   if(!it) {
-    owl_view_iterator_invalidate(g->topmsg);
+    owl_view_iterator_invalidate(g->mw.top);
   } else {
-    owl_view_iterator_clone(g->topmsg, it);
+    owl_view_iterator_clone(g->mw.top, it);
   }
-}
-
-/* markedmsgid */
-
-int owl_global_get_markedmsgid(owl_global *g) {
-  return(g->markedmsgid);
-}
-
-void owl_global_set_markedmsgid(owl_global *g, int i) {
-  g->markedmsgid=i;
-  /* i; index of message in the current view.
-  owl_message *m;
-  owl_view *v;
-
-  v = owl_global_get_current_view(&g);
-  m = owl_view_get_element(v, i);
-  g->markedmsgid = m ? owl_message_get_id(m) : 0;
-  */
 }
 
 /* windows */
@@ -251,10 +236,6 @@ owl_keyhandler *owl_global_get_keyhandler(owl_global *g) {
 }
 
 /* curses windows */
-
-WINDOW *owl_global_get_curs_recwin(owl_global *g) {
-  return(g->recwin);
-}
 
 WINDOW *owl_global_get_curs_sepwin(owl_global *g) {
   return(g->sepwin);
@@ -438,10 +419,11 @@ void owl_global_resize(owl_global *g, int x, int y) {
   if (!g->resizepending) return;
 
   /* delete the current windows */
-  delwin(g->recwin);
   delwin(g->sepwin);
   delwin(g->msgwin);
   delwin(g->typwin);
+  delwin(g->mw.win.win);
+
   if (!isendwin()) {
     endwin();
   }
@@ -575,11 +557,11 @@ owl_viewwin *owl_global_get_viewwin(owl_global *g) {
 /* vert offset */
 
 int owl_global_get_curmsg_vert_offset(owl_global *g) {
-  return(g->curmsg_vert_offset);
+  return g->mw.cur_scroll;
 }
 
 void owl_global_set_curmsg_vert_offset(owl_global *g, int i) {
-  g->curmsg_vert_offset=i;
+  g->mw.cur_scroll = i;
 }
 
 /* startup args */
