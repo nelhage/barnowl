@@ -157,4 +157,11 @@ sub cmp {
     return $self->index - $other->index;
 }
 
+sub same_view {
+    my $self = shift;
+    my $other = shift;
+    return defined($self->view) && defined($other->view)
+      && $self->view eq $other->view;
+}
+
 1;

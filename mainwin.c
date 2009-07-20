@@ -73,6 +73,9 @@ static void reframe_paged(owl_mainwin *mw, int center_on_page)
     return;
   }
 
+  if(!owl_view_iterator_is_valid(mw->end))
+    return;
+
   owl_view_iterator_clone(it, mw->end);
   if(mw->lasttruncated) {
     owl_view_iterator_prev(it);
@@ -158,6 +161,12 @@ static void reframe_normal(owl_mainwin *mw)
 
 static void owl_mainwin_reframe(owl_mainwin *mw)
 {
+  if(!owl_view_iterator_same_view(mw->current, mw->top)) {
+    owl_view_iterator_clone(mw->top, mw->current);
+  }
+  if(!owl_view_iterator_same_view(mw->current, mw->end)) {
+    owl_view_iterator_invalidate(mw->end);
+  }
   switch (owl_global_get_scrollmode(&g)) {
   case OWL_SCROLLMODE_TOP:
     reframe_top(mw);

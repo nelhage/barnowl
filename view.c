@@ -226,3 +226,14 @@ owl_view_iterator* owl_view_iterator_free_later(owl_view_iterator *it)
 {
   return sv_2mortal(it);
 }
+
+int owl_view_iterator_same_view(owl_view_iterator *it1, owl_view_iterator *it2)
+{
+  int same;
+  OWL_PERL_CALL_METHOD(it1, "same_view",
+                       XPUSHs(it2);,
+                       "Error: same_view: %s",
+                       /* fatal */ 1,
+                       same = POPi);
+  return same;
+}

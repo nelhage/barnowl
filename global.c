@@ -205,14 +205,6 @@ owl_view_iterator* owl_global_get_topmsg(owl_global *g) {
   return g->mw.top;
 }
 
-void owl_global_set_topmsg(owl_global *g, owl_view_iterator *it) {
-  if(!it) {
-    owl_view_iterator_invalidate(g->mw.top);
-  } else {
-    owl_view_iterator_clone(g->mw.top, it);
-  }
-}
-
 /* windows */
 
 owl_mainwin *owl_global_get_mainwin(owl_global *g) {
