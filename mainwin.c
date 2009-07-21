@@ -161,12 +161,22 @@ static void reframe_normal(owl_mainwin *mw)
 
 static void owl_mainwin_reframe(owl_mainwin *mw)
 {
-  if(!owl_view_iterator_same_view(mw->current, mw->top)) {
+  if(!owl_view_iterator_is_valid( mw->top)) {
     owl_view_iterator_clone(mw->top, mw->current);
   }
-  if(!owl_view_iterator_same_view(mw->current, mw->end)) {
+  if(!owl_view_iterator_same_view(mw->current, mw->top)) {
+    if(owl_view_iterator_is_at_end(mw->top)) {
+      owl_view_iterator_init_end(mw->top,
+                                 owl_global_get_current_view(&g));
+    } else {
+      int id = owl_message_get_id(owl_view_iterator_get_message(mw->top));
+      owl_view_iterator_init_id(mw->top,
+                                owl_global_get_current_view(&g),
+                                id);
+    }
     owl_view_iterator_invalidate(mw->end);
   }
+
   switch (owl_global_get_scrollmode(&g)) {
   case OWL_SCROLLMODE_TOP:
     reframe_top(mw);
