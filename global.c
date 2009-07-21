@@ -635,12 +635,12 @@ int owl_global_get_nextmsgid(owl_global *g) {
 /* current view */
 
 owl_view *owl_global_get_current_view(owl_global *g) {
-  return(g->current_view);
+  return(g->mw.view);
 }
 
 void owl_global_set_current_view(owl_global *g, owl_view *v) {
-  owl_view_free(g->current_view);
-  g->current_view = v;
+  owl_view_free(g->mw.view);
+  g->mw.view = v;
 }
 
 void owl_global_set_current_style(owl_global *g, owl_style *s) {

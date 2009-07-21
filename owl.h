@@ -419,6 +419,7 @@ typedef struct _owl_mainwin {
   int cur_scroll;
   owl_view_iterator *top, *current, *end;
   int mark;
+  owl_view *view;
 } owl_mainwin;
 
 typedef struct _owl_history {
@@ -540,7 +541,6 @@ typedef struct _owl_global {
   owl_context ctx;
   owl_errqueue errqueue;
   int lines, cols;
-  owl_view *current_view;
   owl_style *current_style;
   owl_messagelist *msglist;
   WINDOW *sepwin, *msgwin, *typwin;

@@ -167,11 +167,11 @@ static void owl_mainwin_reframe(owl_mainwin *mw)
   if(!owl_view_iterator_same_view(mw->current, mw->top)) {
     if(owl_view_iterator_is_at_end(mw->top)) {
       owl_view_iterator_init_end(mw->top,
-                                 owl_global_get_current_view(&g));
+                                 mw->view);
     } else {
       int id = owl_message_get_id(owl_view_iterator_get_message(mw->top));
       owl_view_iterator_init_id(mw->top,
-                                owl_global_get_current_view(&g),
+                                mw->view,
                                 id);
     }
     owl_view_iterator_invalidate(mw->end);
