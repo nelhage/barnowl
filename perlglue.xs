@@ -11,8 +11,9 @@ static const char fileIdent[] = "$Id$";
 SV *owl_perlconfig_curmessage2hashref(void);
 
 #define SV_IS_CODEREF(sv) (SvROK((sv)) && SvTYPE(SvRV((sv))) == SVt_PVCV)
-/* XXX This should probably check ->isa() as well */
-#define SV_IS_MESSAGE(sv) (SvROK((sv)) && SvTYPE(SvRV((sv))) == SVt_PVHV)
+#define SV_IS_MESSAGE(sv) (SvROK((sv)) && \
+	SvTYPE(SvRV((sv))) == SVt_PVHV && \
+		sv_derived_from(sv, "BarnOwl::Message"))
 
 	/*************************************************************
 	 * NOTE
@@ -324,7 +325,9 @@ filter_message_match(filterName, msg)
 			if(!SV_IS_MESSAGE(msg)) {
 					croak("Usage: BarnOwl::filter_message_match(filterName, message)\n");
 			}
+			SvREFCNT_inc(msg);
 			RETVAL = owl_filter_message_match(f, msg);
+			SvREFCNT_dec(msg);
 	}
 	OUTPUT:
 		RETVAL
