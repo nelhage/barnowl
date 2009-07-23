@@ -65,13 +65,13 @@ sub consider_message {
 sub _consider_message {
     my $self = shift;
     my $msg  = shift;
+    my $match;
 
     my $range = $self->ranges->find_or_insert($msg->{id});
     $range->expand_fwd($msg->{id} + 1);
-    
-    if(BarnOwl::filter_message_match($self->get_filter, $msg)) {
-        $self->message($msg->{id}, 1);
-    }
+
+    $match = BarnOwl::filter_message_match($self->get_filter, $msg);
+    $self->message($msg->{id}, $match);
 }
 
 sub reset {

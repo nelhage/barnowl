@@ -72,6 +72,7 @@ sub set_meta {
     my $key = shift;
     my $val = shift;
     $self->{__meta}{$key} = $val;
+    BarnOwl::View->consider_message($self);
 }
 
 sub get_meta {
