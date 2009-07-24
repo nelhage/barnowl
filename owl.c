@@ -39,7 +39,7 @@ owl_global g;
 
 int main(int argc, char **argv, char **env)
 {
-  WINDOW *sepwin, *typwin, *msgwin;
+  WINDOW *sepwin, *typwin;
   owl_editwin *tw;
   owl_popwin *pw;
   int debug, argcsave, followlast;
@@ -307,7 +307,6 @@ int main(int argc, char **argv, char **env)
   if (perlout) owl_free(perlout);
 
   /* hold on to the window names for convenience */
-  msgwin=owl_global_get_curs_msgwin(&g);
   sepwin=owl_global_get_curs_sepwin(&g);
   typwin=owl_global_get_curs_typwin(&g);
   tw=owl_global_get_typwin(&g);
@@ -378,7 +377,6 @@ int main(int argc, char **argv, char **env)
     owl_global_resize(&g, 0, 0);
 
     /* these are here in case a resize changes the windows */
-    msgwin=owl_global_get_curs_msgwin(&g);
     sepwin=owl_global_get_curs_sepwin(&g);
     typwin=owl_global_get_curs_typwin(&g);
 
