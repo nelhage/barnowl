@@ -37,6 +37,11 @@ sub filter_message_match {
     return $filters{$filter}->($m);
 }
 
+sub BarnOwl::Internal::new_command {}
+sub BarnOwl::Internal::new_variable_bool {}
+sub BarnOwl::Internal::new_variable_int {}
+sub BarnOwl::Internal::new_variable_string {}
+
 use BarnOwl;
 
 sub is_prime {
