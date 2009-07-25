@@ -258,22 +258,6 @@ owl_message *owl_function_make_outgoing_aim(char *body, char *to)
   return(m);
 }
 
-/* Create an outgoing loopback message and return a pointer to it.
- * Does not append it to the global queue, use
- * owl_function_add_message() for that.
- */
-owl_message *owl_function_make_outgoing_loopback(char *body)
-{
-  owl_message *m;
-
-  /* create the message */
-  m=owl_message_new();
-  owl_message_create_loopback(m, body);
-  owl_message_set_direction_out(m);
-
-  return(m);
-}
-
 void owl_function_zwrite_setup(char *line)
 {
   owl_editwin *e;
@@ -560,19 +544,12 @@ void owl_function_loopwrite(char *msg)
 {
   owl_message *min, *mout;
 
-  /* create a message and put it on the message queue.  This simulates
-   * an incoming message */
-  min=owl_message_new();
-  mout=owl_function_make_outgoing_loopback(msg);
-
   if (owl_global_is_displayoutgoing(&g)) {
+    mout=owl_message_create_loopback(msg, 1);
     owl_global_messagequeue_addmsg(&g, mout);
-  } else {
-    owl_message_free(mout);
   }
 
-  owl_message_create_loopback(min, msg);
-  owl_message_set_direction_in(min);
+  min = owl_message_create_loopback(msg, 0);
   owl_global_messagequeue_addmsg(&g, min);
 
   /* fake a makemsg */

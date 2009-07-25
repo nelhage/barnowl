@@ -631,17 +631,23 @@ void owl_message_create_admin(owl_message *m, char *header, char *text)
   owl_message_lock(m);
 }
 
-/* caller should set the direction */
-void owl_message_create_loopback(owl_message *m, char *text)
+owl_message *owl_message_create_loopback(char *text, int outgoing)
 {
+  owl_message *m = owl_message_new();
   owl_message_init(m);
   owl_message_set_type_loopback(m);
   owl_message_set_body(m, text);
   owl_message_set_sender(m, "loopsender");
   owl_message_set_recipient(m, "looprecip");
   owl_message_set_isprivate(m);
+  if (outgoing) {
+    owl_message_set_direction_out(m);
+  } else {
+    owl_message_set_direction_in(m);
+  }
 
   owl_message_lock(m);
+  return m;
 }
 
 #ifdef HAVE_LIBZEPHYR
