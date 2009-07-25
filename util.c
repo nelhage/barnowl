@@ -40,9 +40,9 @@ void sepbar(char *in)
   wmove(sepwin, 0, 2);  
 
   if (owl_messagelist_get_size(ml)==0) {
-    strcpy(buff, " (-/-) ");
+    strcpy(buff, " (-) ");
   } else {
-    snprintf(buff, 1024, " (??? / ??? / %i) ", owl_messagelist_get_size(ml));
+    snprintf(buff, 1024, " (%i) ", owl_messagelist_get_size(ml));
   }
   waddstr(sepwin, buff);
 
