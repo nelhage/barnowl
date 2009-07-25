@@ -3,6 +3,8 @@ use warnings;
 
 package BarnOwl::View::Iterator;
 
+sub debug(&) {goto \&BarnOwl::View::debug}
+
 sub view {return shift->{view}}
 sub index {return shift->{index}}
 
@@ -36,7 +38,7 @@ sub initialize_at_start {
     my $view = shift;
     $self->{view}  = $view;
     $self->{index} = 0;
-    BarnOwl::debug("Initialize at start");
+    debug {"Initialize at start"};
 }
 
 sub initialize_at_end {
@@ -44,7 +46,7 @@ sub initialize_at_end {
     my $view = shift;
     my $range;
 
-    BarnOwl::debug("Initialize at end");
+    debug {"Initialize at end"};
 
     $self->{view}  = $view;
     $range = $self->view->ranges->find_or_insert(-1);
@@ -58,13 +60,13 @@ sub initialize_at_id {
     my $id   = shift;
     $self->{view} = $view;
     $self->{index} = $id;
-    BarnOwl::debug("Initialize at $id");
+    debug {"Initialize at $id"};
 }
 
 sub clone {
     my $self = shift;
     my $other = shift;
-    BarnOwl::debug("clone from @{[$other->{index}||0]}");
+    debug {"clone from @{[$other->{index}||0]}"};
     $self->{view} = $other->{view};
     $self->{index} = $other->{index};
 }
@@ -90,7 +92,7 @@ sub prev {
     
     do {
         if($self->index == $range->next_bk) {
-            BarnOwl::debug("Back: fill, id=@{[$self->index]}");
+            debug{"Back: fill, id=@{[$self->index]}"};
             $self->view->fill_back($range);
             if($self->index == $range->next_bk) {
                 # Reached start
@@ -101,7 +103,7 @@ sub prev {
         $self->{index}--;
     } while(!$self->view->message($self->index));
 
-    BarnOwl::debug("PREV newid=@{[$self->index]}");
+    debug{"PREV newid=@{[$self->index]}"};
     return 0;
 }
 
@@ -110,7 +112,7 @@ sub fill_forward {
     my $range = $self->range;
     
     if($self->index >= $range->next_fwd) {
-        BarnOwl::debug("Forward: fill, id=@{[$self->index]}");
+        debug{"Forward: fill, id=@{[$self->index]}"};
         $self->view->fill_forward($range);
         if($self->index >= $range->next_fwd) {
             # Reached end
@@ -143,7 +145,7 @@ sub next {
 sub get_message {
     my $self = shift;
     $self->fixup;
-    BarnOwl::debug("get_message: index=@{[$self->index]}");
+    debug{"get_message: index=@{[$self->index]}"};
     return BarnOwl::message_list->get_by_id($self->index);
 }
 

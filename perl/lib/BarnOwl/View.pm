@@ -6,6 +6,14 @@ package BarnOwl::View;
 use BarnOwl::View::Iterator;
 use BarnOwl::View::RangeList;
 
+our $DEBUG = 0;
+
+sub debug(&) {
+    if($DEBUG) {
+        BarnOwl::debug(shift->());
+    }
+}
+
 
 our %view_cache;
 
@@ -89,7 +97,7 @@ sub fill_back {
     my $ml   = BarnOwl::message_list();
     my $m;
 
-    BarnOwl::debug("Fill back from $pos...");
+    debug {"Fill back from $pos..."};
 
     $ml->iterate_begin($pos, 1);
     do {
@@ -98,7 +106,7 @@ sub fill_back {
         $range->expand_fwd($m->{id} + 1) if $range->next_fwd < 0;
 
         unless(defined $m) {
-            BarnOwl::debug("Hit start in fill_back.");
+            debug {"Hit start in fill_back."};
             goto loop_done;
         }
 
@@ -116,7 +124,7 @@ sub fill_back {
 
 loop_done:
     $ml->iterate_done;
-    BarnOwl::debug("[@{[$self->get_filter]}]" . $self->ranges->string_chain);
+    debug {"[@{[$self->get_filter]}]" . $self->ranges->string_chain};
 }
 
 sub fill_forward {
@@ -126,13 +134,13 @@ sub fill_forward {
     my $ml   = BarnOwl::message_list();
     my $m;
 
-    BarnOwl::debug("Fill forward from $pos...");
+    debug {"Fill forward from $pos..."};
 
     $ml->iterate_begin($pos, 0);
     do {
         $m = $ml->iterate_next;
         unless(defined $m) {
-            BarnOwl::debug("Hit end in fill_forward.");
+            debug {"Hit end in fill_forward."};
             goto loop_done;
         }
 
@@ -150,7 +158,7 @@ sub fill_forward {
 
 loop_done:
     $ml->iterate_done;
-    BarnOwl::debug("[@{[$self->get_filter]}]" . $self->ranges->string_chain);
+    debug {"[@{[$self->get_filter]}]" . $self->ranges->string_chain};
 }
 
 sub invalidate_filter {

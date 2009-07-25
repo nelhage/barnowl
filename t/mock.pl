@@ -44,6 +44,10 @@ sub BarnOwl::Internal::new_variable_string {}
 
 use BarnOwl;
 
+if($ENV{TEST_VERBOSE}) {
+    $BarnOwl::View::DEBUG = 1;
+}
+
 sub is_prime {
     my $n = shift;
     if($n <= 1) {

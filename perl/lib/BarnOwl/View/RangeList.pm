@@ -5,6 +5,8 @@ package BarnOwl::View::RangeList;
 use Scalar::Util qw(weaken);
 use List::Util qw(max min);
 
+sub debug(&) {goto \&BarnOwl::View::debug;}
+
 sub next_fwd {shift->{next_fwd}};
 sub next_bk  {shift->{next_bk}};
 
@@ -43,7 +45,7 @@ sub expand_fwd {
     while (defined $self->next &&
            $self->next_fwd >= $self->next->next_bk &&
            $self->next->next_bk >= 0) {
-        BarnOwl::debug("Merge forward at @{[$self->string]} with @{[$self->next->string]}");
+        debug{"Merge forward at @{[$self->string]} with @{[$self->next->string]}"};
         $merge = 1;
         $self->{next_fwd} = max($self->next_fwd, $self->next->next_fwd);
         $self->{next} = $self->next->next;
@@ -65,7 +67,7 @@ sub expand_bk {
     $self->{next_bk} = $bk;
     while (defined $self->prev &&
            $self->next_bk <= $self->prev->next_fwd) {
-        BarnOwl::debug("Merge back at @{[$self->string]} with @{[$self->prev->string]}");
+        debug{"Merge back at @{[$self->string]} with @{[$self->prev->string]}"};
         $merge = 1;
         $self->{next_bk} = min($self->next_bk, $self->prev->next_bk);
         $self->{prev} = $self->prev->prev;
@@ -94,7 +96,7 @@ sub find_or_insert {
     while(defined $range) {
         if($idx < $range->next_bk) {
             # We've gone too far, insert a new zero-length range
-            BarnOwl::debug("Insert $idx before @{[$range->string]}");
+            debug{"Insert $idx before @{[$range->string]}"};
             return BarnOwl::View::RangeList->new($idx, $idx,
                                                  $range->prev,
                                                  $range);
@@ -106,7 +108,7 @@ sub find_or_insert {
         $range = $range->next;
     }
 
-    BarnOwl::debug("Insert at end...");
+    debug{"Insert at end..."};
     return BarnOwl::View::RangeList->new($idx, $idx, $last, undef);
 }
 
