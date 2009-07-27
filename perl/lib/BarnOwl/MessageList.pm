@@ -39,7 +39,7 @@ sub next_id {
 
 sub new {
     my $class = shift;
-    my $self = {messages => {}};
+    my $self = {messages => {}, keys => []};
     return bless $self, $class;
 }
 
@@ -76,7 +76,6 @@ sub iterate_begin {
     my $self = shift;
     my $id   = shift;
     my $rev  = shift;
-    $self->{keys} = [sort {$a <=> $b} keys %{$self->{messages}}];
     if($id < 0) {
         $self->{iterator} = scalar @{$self->{keys}};
     } else {
@@ -132,6 +131,7 @@ sub add_message {
     my $self = shift;
     my $m = shift;
     $self->{messages}->{$m->id} = $m;
+    push @{$self->{keys}}, $m->id;
 }
 
 sub expunge {
@@ -142,6 +142,7 @@ sub expunge {
             BarnOwl::View->message_deleted($message->id);
         }
     }
+    $self->{keys} = [sort {$a <=> $b} keys %{$self->{messages}}];
 }
 
 1;
