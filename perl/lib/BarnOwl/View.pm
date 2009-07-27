@@ -26,13 +26,11 @@ sub message_deleted {
 }
 
 sub message {
-    my $self = shift;
-    my $idx = shift;
-    my $val = shift;
-    if(defined $val) {
-        vec($self->{messages}, $idx, 1) = $val;
+    # @_[0,1,2] -> (self, index, value)
+    if(defined $_[2]) {
+        vec($_[0]->{messages}, $_[1], 1) = $_[2];
     }
-    return vec($self->{messages}, $idx, 1);
+    return vec($_[0]->{messages}, $_[1], 1);
 };
 sub get_filter {shift->{filter}};
 
