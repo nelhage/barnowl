@@ -49,8 +49,8 @@ sub initialize_at_end {
     debug {"Initialize at end"};
 
     $self->{view}  = $view;
-    $range = $self->view->ranges->find_or_insert(-1);
-    $self->view->fill_back($range);
+    $range = $self->{view}->ranges->find_or_insert(-1);
+    $self->{view}->fill_back($range);
     $self->{index} = $range->next_fwd;
 }
 
@@ -74,7 +74,7 @@ sub clone {
 sub is_at_start {
     my $self = shift;
   {
-      local $self->{index} = $self->index;
+      local $self->{index} = $self->{index};
       return $self->prev;
   }
 }
@@ -82,28 +82,28 @@ sub is_at_start {
 sub is_at_end {
     my $self = shift;
     $self->fixup;
-    return !$self->view->message($self->index);
+    return !$self->{view}->message($self->{index});
 }
 
 sub prev {
     my $self = shift;
-    my $old_idx = $self->index;
+    my $old_idx = $self->{index};
     my $range = $self->range;
     
     do {
-        if($self->index == $range->next_bk) {
-            debug{"Back: fill, id=@{[$self->index]}"};
-            $self->view->fill_back($range);
-            if($self->index == $range->next_bk) {
+        if($self->{index} == $range->next_bk) {
+            debug{"Back: fill, id=@{[$self->{index}]}"};
+            $self->{view}->fill_back($range);
+            if($self->{index} == $range->next_bk) {
                 # Reached start
                 $self->{index} = $old_idx;
                 return 1;
             }
         }
         $self->{index}--;
-    } while(!$self->view->message($self->index));
+    } while(!$self->{view}->message($self->{index}));
 
-    debug{"PREV newid=@{[$self->index]}"};
+    debug{"PREV newid=@{[$self->{index}]}"};
     return 0;
 }
 
@@ -111,10 +111,10 @@ sub fill_forward {
     my $self = shift;
     my $range = $self->range;
     
-    if($self->index >= $range->next_fwd) {
-        debug{"Forward: fill, id=@{[$self->index]}"};
-        $self->view->fill_forward($range);
-        if($self->index >= $range->next_fwd) {
+    if($self->{index} >= $range->next_fwd) {
+        debug{"Forward: fill, id=@{[$self->{index}]}"};
+        $self->{view}->fill_forward($range);
+        if($self->{index} >= $range->next_fwd) {
             # Reached end
             return 1;
         }
@@ -127,7 +127,7 @@ sub fixup {
 
     return 1 if $self->fill_forward;
 
-    while(!$self->view->message($self->index)) {
+    while(!$self->{view}->message($self->{index})) {
         $self->{index}++;
         return 1 if $self->fill_forward;
     }
@@ -145,8 +145,8 @@ sub next {
 sub get_message {
     my $self = shift;
     $self->fixup;
-    debug{"get_message: index=@{[$self->index]}"};
-    return BarnOwl::message_list->get_by_id($self->index);
+    debug{"get_message: index=@{[$self->{index}]}"};
+    return BarnOwl::message_list->get_by_id($self->{index});
 }
 
 sub cmp {
@@ -156,14 +156,14 @@ sub cmp {
     $self->fixup;
     $other->fixup;
     
-    return $self->index - $other->index;
+    return $self->{index} - $other->{index};
 }
 
 sub same_view {
     my $self = shift;
     my $other = shift;
-    return defined($self->view) && defined($other->view)
-      && $self->view eq $other->view;
+    return defined($self->{view}) && defined($other->view)
+      && $self->{view} eq $other->view;
 }
 
 1;
