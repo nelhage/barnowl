@@ -13,13 +13,14 @@ sub new {
     my $self = {
         view     => undef,
         index    => undef,
+        _range   => undef
        };
     return bless $self, $class;
 }
 
 sub range {
     my $self = shift;
-    return $self->view->ranges->find_or_insert($self->index);
+    return $self->{view}->range_at($self->{index});
 }
 
 sub invalidate {
@@ -49,7 +50,7 @@ sub initialize_at_end {
     debug {"Initialize at end"};
 
     $self->{view}  = $view;
-    $range = $self->{view}->ranges->find_or_insert(-1);
+    $range = $self->{view}->range_at(-1);
     $self->{view}->fill_back($range);
     $self->{index} = $range->next_fwd;
 }

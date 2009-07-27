@@ -43,7 +43,19 @@ sub is_empty      {
     return $it->is_at_end;
 };
 
-sub ranges        {shift->{ranges}};
+sub range_at {
+    my $self = shift;
+    my $idx = shift;
+    my $range = $self->{range};
+    if($range &&
+       $range->{next_bk} <= $idx &&
+       $range->{next_fwd} >= $idx) {
+        return $range;
+    }
+    $range = $self->{ranges}->find_or_insert($idx);
+    $self->{range} = $range;
+    return $range;
+}
 
 sub new {
     my $class = shift;
@@ -55,7 +67,8 @@ sub new {
 
     my $self  = {messages  => "",
                  filter    => $filter,
-                 ranges    => undef};
+                 ranges    => undef,
+                 range     => undef};
     bless $self, $class;
     $self->reset;
     $view_cache{$filter} = $self;
@@ -75,7 +88,7 @@ sub _consider_message {
     my $msg  = shift;
     my $match;
 
-    my $range = $self->ranges->find_or_insert($msg->{id});
+    my $range = $self->range_at($msg->{id});
     $range->expand_fwd($msg->{id} + 1);
 
     $match = BarnOwl::filter_message_match($self->get_filter, $msg);
