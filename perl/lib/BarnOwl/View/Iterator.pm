@@ -126,6 +126,14 @@ sub fill_forward {
 sub fixup {
     my $self = shift;
 
+    # This check is redudant, in that this is exactly the test that
+    # the below code would end up doing anyways. However, profiling
+    # reveals that fast-tracking the common case like this is a huge
+    # performance win, since this is probably /the/ the hottest piece
+    # of code path when walking views.
+    return 0 if $self->{index} < $self->range->next_fwd
+      && $self->{view}->message($self->{index});
+
     return 1 if $self->fill_forward;
 
     while(!$self->{view}->message($self->{index})) {
