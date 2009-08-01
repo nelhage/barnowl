@@ -43,7 +43,7 @@ my $messages = DBIx::DBSchema::Table->new({
             null   => 0,
            }),
         DBIx::DBSchema::Column->new({
-            name    => 'deleted',
+            name    => 'expunged',
             type    => 'bool',
             default => 'false'
            })

@@ -26,14 +26,15 @@ my $ATTRS = 'attributes';
 my $attr_fields    = [qw(message_id key value)];
 
 __PACKAGE__->mk_ro_accessors(qw(db cache));
-__PACKAGE__->mk_accessors(qw(msg_iter attr_iter attr_lookahead _next_id));
+__PACKAGE__->mk_accessors(qw(msg_iter attr_iter attr_lookahead _next_id deleted));
 
 sub new {
     my $class = shift;
     my $db = DBIx::Simple->new("DBI:SQLite:dbname=$ENV{HOME}/.owl/messagedb",
+                               "", "",
                              {RaiseError => 1, AutoCommit => 1});
     my $cache = Cache::Memory->new(default_expires => '30 sec');
-    my $self = {db => $db, cache => $cache};
+    my $self = {db => $db, cache => $cache, deleted => {}};
     bless($self, $class);
 
     my $maxq = $self->db->query("SELECT MAX(id) FROM $MESSAGES")
@@ -51,6 +52,21 @@ sub new {
     return $self;
 }
 
+sub set_attribute {
+    my $self = shift;
+    my $msg = shift;
+    my $key = shift;
+    my $value = shift;
+
+    if($key eq 'deleted') {
+        if($value) {
+            $self->deleted->{$msg->id} = 1;
+        } else {
+            delete $self->deleted->{$msg->id};
+        }
+    }
+}
+
 sub next_id {
     my $self = shift;
     my $id = $self->_next_id;
@@ -60,7 +76,7 @@ sub next_id {
 
 sub get_size {
     my $self = shift;
-    my $count = $self->db->query("SELECT COUNT(*) from $MESSAGES")
+    my $count = $self->db->query("SELECT COUNT(*) from $MESSAGES WHERE expunged='false'")
       or die("Can't SELECT COUNT:" . $self->db->error);
     my $cnt = $count->fetch->[0];
     return $cnt;
@@ -100,7 +116,7 @@ sub load_attr {
 sub start_iterate {
     my $self = shift;
     $self->msg_iter($self->db->select($MESSAGES, $message_fields,
-                                    {deleted => 'false'}, [qw(id)]))
+                                    {expunged => 'false'}, [qw(id)]))
       or die("Unable to SELECT from messages: " . $self->db->error);
     
     $self->attr_iter($self->db->select($ATTRS, $attr_fields,
@@ -126,8 +142,9 @@ sub iterate_next {
         load_attr(\%msg, $attr);
         $attr = $self->attr_iter->fetch;
     }
+    $msg{deleted} = 1 if($self->deleted->{$msg{id}});
     $msg = BarnOwl::Message->new(%msg);
-    $self->cache->set($msg->id => $msg);
+    $self->cache->set($msg{id} => $msg);
     return $msg;
 }
 
@@ -153,8 +170,9 @@ sub get_by_id {
         load_attr(\%msg, $row);
     }
 
+    $msg{deleted} = 1 if($self->deleted->{$msg{id}});
     $msg = BarnOwl::Message->new(%msg);
-    $self->cache->set($msg->id => $msg);
+    $self->cache->set($id => $msg);
     return $msg;
 }
 
@@ -185,7 +203,14 @@ sub add_message {
 }
 
 sub expunge {
-    ## XXX TODO Y'ALL
+    my $self = shift;
+    $self->db->begin_work;
+    for my $id (keys %{$self->deleted}) {
+        $self->db->update($MESSAGES, {expunged => 1}, {id => $id});
+    }
+    $self->db->commit;
+    $self->deleted({});
 }
 
 1;
+
