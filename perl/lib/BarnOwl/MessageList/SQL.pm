@@ -264,6 +264,7 @@ sub expunge {
     $self->db->begin_work;
     for my $id (keys %{$self->deleted}) {
         $self->db->update($MESSAGES, {expunged => 'true'}, {id => $id});
+        BarnOwl::View->message_deleted($id);
     }
     $self->db->commit;
     $self->deleted({});
