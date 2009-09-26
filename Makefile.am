@@ -4,6 +4,7 @@ bin_PROGRAMS = barnowl.bin
 check_PROGRAMS = tester
 
 barnowl_bin_SOURCES = $(BASE_SRCS) \
+     $(VAR_SRCS) \
      owl.h owl_perl.h config.h \
      owl.c \
      $(GEN_C) $(GEN_H)
@@ -11,6 +12,7 @@ barnowl_bin_SOURCES = $(BASE_SRCS) \
 barnowl_bin_LDADD = libfaim/libfaim.a
 
 tester_SOURCES = $(BASE_SRCS) \
+     $(VAR_SRCS) \
      owl.h owl_perl.h config.h \
      $(GEN_C) $(GEN_H) \
      tester.c
@@ -31,7 +33,9 @@ BASE_SRCS=list.c message.c mainwin.c popwin.c zephyr.c messagelist.c \
      zbuddylist.c popexec.c obarray.c select.c wcwidth.c \
      glib_compat.c
 
-GEN_C = varstubs.c perlglue.c
+VAR_SRCS = varstubs.h varlist.h varstubs.c
+
+GEN_C = perlglue.c
 GEN_H = owl_prototypes.h
 
 BUILT_SOURCES = $(GEN_C) $(GEN_H)
@@ -48,10 +52,7 @@ proto: owl_prototypes.h
 perlglue.c: perlglue.xs
 	$(AM_V_GEN)perl $(XSUBPPDIR)/xsubpp $(XSUBPPFLAGS) -prototypes perlglue.xs > perlglue.c
 
-varstubs.c: stubgen.pl varlist.h
-	$(AM_V_GEN)perl $< $(filter-out $<,$+) > $@
-
-owl_prototypes.h.new: codelist.pl varstubs.c $(BASE_SRCS)
+owl_prototypes.h.new: codelist.pl $(BASE_SRCS)
 	$(AM_V_GEN)perl $< $(filter-out $<,$+) > $@
 
 # For emacs flymake-mode

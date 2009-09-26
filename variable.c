@@ -5,50 +5,50 @@
 #include <ctype.h>
 #include "owl.h"
 
-#define OWLVAR_BOOL(name,default,summary,description) \
+#define OWLVAR_BOOL(name,cname,default,summary,description)             \
         { name, OWL_VARIABLE_BOOL, NULL, default, "on,off", summary,description, NULL, \
-        NULL, NULL, NULL, NULL, NULL, NULL }
+        NULL, NULL, NULL, NULL, NULL, NULL },
 
-#define OWLVAR_BOOL_FULL(name,default,summary,description,validate,set,get) \
+#define OWLVAR_BOOL_FULL(name,cname,default,summary,description,validate,set,get) \
         { name, OWL_VARIABLE_BOOL, NULL, default, "on,off", summary,description, NULL, \
-        validate, set, NULL, get, NULL, NULL }
+        validate, set, NULL, get, NULL, NULL },
 
-#define OWLVAR_INT(name,default,summary,description) \
+#define OWLVAR_INT(name,cname,default,summary,description)              \
         { name, OWL_VARIABLE_INT, NULL, default, "<int>", summary,description, NULL, \
-        NULL, NULL, NULL, NULL, NULL, NULL }
+        NULL, NULL, NULL, NULL, NULL, NULL },
 
-#define OWLVAR_INT_FULL(name,default,summary,description,validset,validate,set,get) \
+#define OWLVAR_INT_FULL(name,cname,default,summary,description,validset,validate,set,get) \
         { name, OWL_VARIABLE_INT, NULL, default, validset, summary,description, NULL, \
-        validate, set, NULL, get, NULL, NULL }
+        validate, set, NULL, get, NULL, NULL },
 
-#define OWLVAR_PATH(name,default,summary,description) \
+#define OWLVAR_PATH(name,cname,default,summary,description)             \
         { name, OWL_VARIABLE_STRING, default, 0, "<path>", summary,description,  NULL, \
-        NULL, NULL, NULL, NULL, NULL, NULL }
+        NULL, NULL, NULL, NULL, NULL, NULL },
 
-#define OWLVAR_STRING(name,default,summary,description) \
+#define OWLVAR_STRING(name,cname,default,summary,description)           \
         { name, OWL_VARIABLE_STRING, default, 0, "<string>", summary,description, NULL, \
-        NULL, NULL, NULL, NULL, NULL, NULL }
+        NULL, NULL, NULL, NULL, NULL, NULL },
 
-#define OWLVAR_STRING_FULL(name,default,summary,description,validate,set,get) \
+#define OWLVAR_STRING_FULL(name,cname,default,summary,description,validate,set,get) \
         { name, OWL_VARIABLE_STRING, default, 0, "<string>", summary,description, NULL, \
-        validate, set, NULL, get, NULL, NULL }
+        validate, set, NULL, get, NULL, NULL },
 
 /* enums are really integers, but where validset is a comma-separated
  * list of strings which can be specified.  The tokens, starting at 0,
  * correspond to the values that may be specified. */
-#define OWLVAR_ENUM(name,default,summary,description,validset) \
+#define OWLVAR_ENUM(name,cname,default,summary,description,validset)    \
         { name, OWL_VARIABLE_INT, NULL, default, validset, summary,description, NULL, \
         owl_variable_enum_validate, \
         NULL, owl_variable_enum_set_fromstring, \
         NULL, owl_variable_enum_get_tostring, \
-        NULL }
+        NULL },
 
-#define OWLVAR_ENUM_FULL(name,default,summary,description,validset,validate, set, get) \
+#define OWLVAR_ENUM_FULL(name,cname,default,summary,description,validset,validate, set, get) \
         { name, OWL_VARIABLE_INT, NULL, default, validset, summary,description, NULL, \
         validate, \
         set, owl_variable_enum_set_fromstring, \
         get, owl_variable_enum_get_tostring, \
-        NULL }
+        NULL },
 
 static owl_variable variables_to_init[] = {
 

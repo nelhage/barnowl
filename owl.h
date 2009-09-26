@@ -593,6 +593,7 @@ typedef struct _owl_global {
 extern owl_global g;
 
 #include "owl_prototypes.h"
+#include "varstubs.h"
 
 /* these are missing from the zephyr includes for some reason */
 #ifdef HAVE_LIBZEPHYR
