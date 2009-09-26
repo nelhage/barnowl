@@ -48,7 +48,7 @@ proto: owl_prototypes.h
 perlglue.c: perlglue.xs
 	$(AM_V_GEN)perl $(XSUBPPDIR)/xsubpp $(XSUBPPFLAGS) -prototypes perlglue.xs > perlglue.c
 
-varstubs.c: stubgen.pl variable.c
+varstubs.c: stubgen.pl varlist.h
 	$(AM_V_GEN)perl $< $(filter-out $<,$+) > $@
 
 owl_prototypes.h.new: codelist.pl varstubs.c $(BASE_SRCS)
