@@ -38,6 +38,22 @@ BarnOwl::create_style("default", "BarnOwl::Style::Default");
 
 ################################################################################
 
+BEGIN {
+    for my $field qw(body
+                     context subcontext
+                     personal_context short_personal_context
+                     login login_type login_extra
+                     pretty_sender long_sender
+                     pretty_recipient ) {
+        no strict 'refs';
+        *{"BarnOwl::Style::Default::$field"} = sub {
+            my $self = shift;
+            my $m = shift;
+            return $m->$field;
+        }
+    }
+};
+
 sub format_time {
     my $self = shift;
     my $m = shift;
@@ -50,10 +66,10 @@ sub format_login {
     my $m = shift;
     return sprintf(
         '@b<%s%s> for @b(%s) (%s) %s',
-        uc( $m->login ),
-        $m->login_type,
-        $m->pretty_sender,
-        $m->login_extra,
+        uc( $self->login($m) ),
+        $self->login_type($m),
+        $self->pretty_sender($m),
+        $self->login_extra($m),
         $self->format_time($m)
        );
 }
@@ -61,9 +77,9 @@ sub format_login {
 sub format_ping {
     my $self = shift;
     my $m = shift;
-    my $personal_context = $m->personal_context;
+    my $personal_context = $self->personal_context($m);
     $personal_context = ' [' . $personal_context . ']' if $personal_context;
-    return "\@b(PING)" . $personal_context . " from \@b(" . $m->pretty_sender . ")";
+    return "\@b(PING)" . $personal_context . " from \@b(" . $self->pretty_sender($m) . ")";
 }
 
 sub format_admin {
@@ -84,20 +100,20 @@ sub chat_header {
     my $m = shift;
     my $header;
     if ( $m->is_personal ) {
-        my $personal_context = $m->personal_context;
+        my $personal_context = $self->personal_context($m);
         $personal_context = ' [' . $personal_context . ']' if $personal_context;
 
         if ( $m->direction eq "out" ) {
-            $header = ucfirst $m->type . $personal_context . " sent to " . $m->pretty_recipient;
+            $header = ucfirst $m->type . $personal_context . " sent to " . $self->pretty_recipient($m);
         } else {
-            $header = ucfirst $m->type . $personal_context . " from " . $m->pretty_sender;
+            $header = ucfirst $m->type . $personal_context . " from " . $self->pretty_sender($m);
         }
     } else {
-        $header = $m->context;
-        if(defined $m->subcontext) {
-            $header .= ' / ' . $m->subcontext;
+        $header = $self->context($m);
+        if(defined $self->subcontext($m)) {
+            $header .= ' / ' . $self->subcontext($m);
         }
-        $header .= ' / @b{' . $m->pretty_sender . '}';
+        $header .= ' / @b{' . $self->pretty_sender($m) . '}';
     }
 
     if($m->opcode) {
@@ -111,7 +127,7 @@ sub chat_header {
 sub format_sender {
     my $self = shift;
     my $m = shift;
-    my $sender = $m->long_sender;
+    my $sender = $self->long_sender($m);
     $sender =~ s/\n.*$//s;
     if (BarnOwl::getvar('colorztext') eq 'on') {
       return "  (" . $sender . '@color[default]' . ")";
@@ -125,7 +141,7 @@ sub indent_body
     my $self = shift;
     my $m = shift;
 
-    my $body = $m->body;
+    my $body = $self->body($m);
     if ($m->{should_wordwrap}) {
       $body = BarnOwl::wordwrap($body, BarnOwl::getnumcols()-9);
     }

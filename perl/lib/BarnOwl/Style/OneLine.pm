@@ -25,9 +25,9 @@ sub format_login {
     BASE_FORMAT,
     '<',
     $m->type,
-    uc( $m->login ),
-    $m->pretty_sender)
-    . ($m->login_extra ? "at ".$m->login_extra : '');
+    uc( $self->login(m) ),
+    $self->pretty_sender($m))
+    . ($self->login_extra($m) ? "at ".$self->login_extra($m) : '');
 }
 
 sub format_ping {
@@ -38,7 +38,7 @@ sub format_ping {
     '<',
     $m->type,
     'PING',
-    $m->pretty_sender)
+    $self->pretty_sender($m))
 }
 
 sub format_chat
@@ -61,22 +61,22 @@ sub format_chat
     $line= sprintf(BASE_FORMAT,
                    $dirsym,
                    $m->type,
-                   maybe($m->short_personal_context),
+                   maybe($self->short_personal_context($m)),
                    ($dir eq 'out'
-                    ? $m->pretty_recipient
-                    : $m->pretty_sender));
+                    ? $self->pretty_recipient($m)
+                    : $self->pretty_sender($m)));
   }
   else {
     $line = sprintf(BASE_FORMAT,
                     $dirsym,
-                    maybe($m->context),
-                    maybe($m->subcontext),
+                    maybe($self->context($m)),
+                    maybe($self->subcontext($m)),
                     ($dir eq 'out'
-                     ? $m->pretty_recipient
-                     : $m->pretty_sender));
+                     ? $self->pretty_recipient($m)
+                     : $self->pretty_sender($m)));
   }
 
-  my $body = $m->{body};
+  my $body = $self->body($m);
   $body =~ tr/\n/ /;
   $line .= $body;
   return $line;
@@ -88,7 +88,7 @@ sub format_admin
   my $self = shift;
   my $m = shift;
   my $line = sprintf(BASE_FORMAT, '<', 'ADMIN', '', '');
-  my $body = $m->{body};
+  my $body = $self->body($m);
   $body =~ tr/\n/ /;
   return $line.$body;
 }
