@@ -199,6 +199,8 @@ int owl_mainwin_is_last_msg_truncated(const owl_mainwin *mw)
   return(0);
 }
 
+/* Returns an iterator that points just after the last message
+ * displayed. */
 owl_view_iterator *owl_mainwin_get_last_msg(const owl_mainwin *mw)
 {
   return mw->lastdisplayed;

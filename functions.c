@@ -1483,8 +1483,13 @@ void owl_function_page_curmsg(int step)
   lines=owl_message_get_numlines(m);
 
   if (offset==0) {
+    owl_message *cur;
+    owl_view_iterator *iter;
     /* Bail if the curmsg isn't the last one displayed */
-    owl_message *cur = owl_view_iterator_get_message(owl_mainwin_get_last_msg(owl_global_get_mainwin(&g)));
+    iter = owl_view_iterator_delete_later(owl_view_iterator_new());
+    owl_view_iterator_clone(iter, owl_mainwin_get_last_msg(owl_global_get_mainwin(&g)));
+    owl_view_iterator_prev(iter);
+    cur = owl_view_iterator_get_message(iter);
     if (!cur
         || (owl_message_get_id(m) != owl_message_get_id(cur))) {
       owl_function_makemsg("The entire message is already displayed");
@@ -1534,10 +1539,14 @@ void owl_function_mainwin_pagedown(void)
 
   owl_view_iterator_clone(iter, owl_mainwin_get_last_msg(owl_global_get_mainwin(&g)));
   if (!owl_view_iterator_is_valid(iter)) return;
+  /* Point iter at the next message not fully displayed. */
   if (owl_mainwin_is_last_msg_truncated(owl_global_get_mainwin(&g))
       && (owl_view_iterator_cmp(owl_global_get_curmsg(&g), iter) < 0)) {
     owl_view_iterator_prev(iter);
   }
+  /* Move back one to account for the nextmsg. */
+  owl_view_iterator_prev(iter);
+  /* Move forward from iter to trigger all the relevant hooks. */
   owl_global_set_curmsg(&g, iter);
   owl_function_nextmsg();
 }
