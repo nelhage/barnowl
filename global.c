@@ -44,6 +44,8 @@ void owl_global_init(owl_global *g) {
 
   g->rightshift=0;
 
+  g->pw = NULL;
+  g->vw = NULL;
   g->tw = NULL;
 
   owl_keyhandler_init(&g->kh);
@@ -120,7 +122,6 @@ static void _owl_global_init_windows(owl_global *g)
   owl_mainpanel_init(&(g->mainpanel));
 
   /* Create the widgets */
-  owl_popwin_init(&(g->pw));
   owl_msgwin_init(&(g->msgwin), g->mainpanel.msgwin);
   owl_sepbar_init(g->mainpanel.sepwin);
 
@@ -148,7 +149,7 @@ void owl_global_complete_setup(owl_global *g)
   owl_cmddict_setup(&(g->cmds));
 }
 
-owl_context *owl_global_get_context(owl_global *g) {
+owl_context *owl_global_get_context(const owl_global *g) {
   if (!g->context_stack)
     return NULL;
   return g->context_stack->data;
@@ -168,29 +169,36 @@ static void owl_global_activate_context(owl_global *g, owl_context *c) {
 
 void owl_global_push_context(owl_global *g, int mode, void *data, const char *keymap, owl_window *cursor) {
   owl_context *c;
-  if (!(mode & OWL_CTX_MODE_BITS))
-    mode |= OWL_CTX_INTERACTIVE;
-  c = owl_malloc(sizeof *c);
-  c->mode = mode;
-  c->data = data;
-  c->cursor = cursor ? g_object_ref(cursor) : NULL;
-  c->keymap = owl_strdup(keymap);
+  c = owl_context_new(mode, data, keymap, cursor);
+  owl_global_push_context_obj(g, c);
+}
+
+void owl_global_push_context_obj(owl_global *g, owl_context *c)
+{
   g->context_stack = g_list_prepend(g->context_stack, c);
   owl_global_activate_context(g, owl_global_get_context(g));
 }
 
-void owl_global_pop_context(owl_global *g) {
+/* Pops the current context from the context stack and returns it. Caller is
+ * responsible for freeing. */
+owl_context *owl_global_pop_context_no_delete(owl_global *g) {
   owl_context *c;
   if (!g->context_stack)
-    return;
+    return NULL;
   c = owl_global_get_context(g);
+  owl_context_deactivate(c);
   g->context_stack = g_list_delete_link(g->context_stack,
                                         g->context_stack);
-  if (c->cursor)
-    g_object_unref(c->cursor);
-  owl_free(c->keymap);
-  owl_free(c);
   owl_global_activate_context(g, owl_global_get_context(g));
+  return c;
+}
+
+/* Pops the current context from the context stack and deletes it. */
+void owl_global_pop_context(owl_global *g) {
+  owl_context *c;
+  c = owl_global_pop_context_no_delete(g);
+  if (c)
+    owl_context_delete(c);
 }
 
 int owl_global_get_lines(const owl_global *g) {
@@ -257,7 +265,11 @@ owl_mainwin *owl_global_get_mainwin(owl_global *g) {
 }
 
 owl_popwin *owl_global_get_popwin(owl_global *g) {
-  return(&(g->pw));
+  return g->pw;
+}
+
+void owl_global_set_popwin(owl_global *g, owl_popwin *pw) {
+  g->pw = pw;
 }
 
 /* msglist */
@@ -272,16 +284,10 @@ owl_keyhandler *owl_global_get_keyhandler(owl_global *g) {
   return(&(g->kh));
 }
 
-/* underlying owl_windows */
-
-owl_window *owl_global_get_typwin_window(const owl_global *g) {
-  return g->mainpanel.typwin;
-}
-
-/* typwin */
-
-owl_editwin *owl_global_get_typwin(const owl_global *g) {
-  return(g->tw);
+/* Gets the currently active typwin out of the current context. */
+owl_editwin *owl_global_current_typwin(const owl_global *g) {
+  owl_context *ctx = owl_global_get_context(g);
+  return owl_editcontext_get_editwin(ctx);
 }
 
 /* variable dictionary */
@@ -316,16 +322,21 @@ owl_editwin *owl_global_set_typwin_active(owl_global *g, int style, owl_history 
       owl_function_resize_typwin(owl_global_get_typwin_lines(g) + d);
 
   if (g->typwin_erase_id) {
-    g_signal_handler_disconnect(owl_global_get_typwin_window(g), g->typwin_erase_id);
+    g_signal_handler_disconnect(g->mainpanel.typwin, g->typwin_erase_id);
     g->typwin_erase_id = 0;
   }
 
-  g->tw = owl_editwin_new(owl_global_get_typwin_window(g),
+  g->tw = owl_editwin_new(g->mainpanel.typwin,
                           owl_global_get_typwin_lines(g),
                           g->cols,
                           style,
                           hist);
   return g->tw;
+}
+
+void owl_global_deactivate_editcontext(owl_context *ctx) {
+  owl_global *g = ctx->cbdata;
+  owl_global_set_typwin_inactive(g);
 }
 
 void owl_global_set_typwin_inactive(owl_global *g) {
@@ -335,10 +346,11 @@ void owl_global_set_typwin_inactive(owl_global *g) {
 
   if (!g->typwin_erase_id) {
     g->typwin_erase_id =
-      g_signal_connect(owl_global_get_typwin_window(g), "redraw", G_CALLBACK(owl_window_erase_cb), NULL);
+      g_signal_connect(g->mainpanel.typwin, "redraw", G_CALLBACK(owl_window_erase_cb), NULL);
   }
-  owl_window_dirty(owl_global_get_typwin_window(g));
+  owl_window_dirty(g->mainpanel.typwin);
 
+  owl_editwin_unref(g->tw);
   g->tw = NULL;
 }
 
@@ -490,7 +502,11 @@ const char *owl_global_get_hostname(const owl_global *g) {
 /* viewwin */
 
 owl_viewwin *owl_global_get_viewwin(owl_global *g) {
-  return(&(g->vw));
+  return g->vw;
+}
+
+void owl_global_set_viewwin(owl_global *g, owl_viewwin *vw) {
+  g->vw = vw;
 }
 
 
@@ -668,6 +684,10 @@ void owl_global_set_search_re(owl_global *g, const owl_regex *re) {
   }
   if (re != NULL)
     owl_regex_copy(re, &g->search_re);
+  /* TODO: Emit a signal so we don't depend on the viewwin and mainwin */
+  if (owl_global_get_viewwin(g))
+    owl_viewwin_dirty(owl_global_get_viewwin(g));
+  owl_mainwin_redisplay(owl_global_get_mainwin(g));
 }
 
 const owl_regex *owl_global_get_search_re(const owl_global *g) {

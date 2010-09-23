@@ -16,6 +16,7 @@ typedef struct _owl_editwin_excursion { /*noproto*/
 } oe_excursion;
 
 struct _owl_editwin { /*noproto*/
+  int refcount;
   char *buff;
   owl_history *hist;
   int bufflen;
@@ -73,14 +74,16 @@ static owl_editwin *owl_editwin_allocate(void)
   owl_editwin *e;
   e = owl_malloc(sizeof(owl_editwin));
   memset(e, 0, sizeof(*e));
+  e->refcount = 1;
   return e;
 }
 
-void owl_editwin_delete(owl_editwin *e)
+static void _owl_editwin_delete(owl_editwin *e)
 {
   if (e->win) {
     g_signal_handler_disconnect(e->win, e->repaint_id);
     g_signal_handler_disconnect(e->win, e->resized_id);
+    g_object_unref(e->win);
   }
   owl_free(e->buff);
   owl_free(e->killbuf);
@@ -153,6 +156,19 @@ owl_editwin *owl_editwin_new(owl_window *win, int winlines, int wincols, int sty
   return e;
 }
 
+owl_editwin *owl_editwin_ref(owl_editwin *e)
+{
+  e->refcount++;
+  return e;
+}
+
+void owl_editwin_unref(owl_editwin *e)
+{
+  e->refcount--;
+  if (e->refcount <= 0)
+    _owl_editwin_delete(e);
+}
+
 static void oe_window_resized(owl_window *w, owl_editwin *e)
 {
   /* update the sizes */
@@ -170,10 +186,16 @@ static void oe_set_window(owl_editwin *e, owl_window *w, int winlines, int winco
   else
     e->wrapcol = 0;
   if (e->win) {
+    g_object_ref(e->win);
     e->repaint_id = g_signal_connect(w, "redraw", G_CALLBACK(oe_redraw), e);
     e->resized_id = g_signal_connect(w, "resized", G_CALLBACK(oe_window_resized), e);
     owl_window_dirty(e->win);
   }
+}
+
+owl_window *owl_editwin_get_window(owl_editwin *e)
+{
+  return e->win;
 }
 
 /* echo the character 'ch' for each normal character keystroke,

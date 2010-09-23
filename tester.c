@@ -390,7 +390,7 @@ int owl_editwin_regtest(void) {
 							    "\n"
 							    "blah"));
 
-  owl_editwin_delete(oe); oe = NULL;
+  owl_editwin_unref(oe); oe = NULL;
   oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
 
   /* check that lines ending with ". " correctly fill */
@@ -403,7 +403,7 @@ int owl_editwin_regtest(void) {
 							    "\n"
 							    "blah"));
 
-  owl_editwin_delete(oe); oe = NULL;
+  owl_editwin_unref(oe); oe = NULL;
 
   /* Test owl_editwin_move_to_beginning_of_line. */
   oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
@@ -425,7 +425,7 @@ int owl_editwin_regtest(void) {
   owl_editwin_point_move(oe, 2);
   FAIL_UNLESS("find beginning of line after empty middle line",
 	      owl_editwin_move_to_beginning_of_line(oe) == -2);
-  owl_editwin_delete(oe); oe = NULL;
+  owl_editwin_unref(oe); oe = NULL;
 
   printf("# END testing owl_editwin (%d failures)\n", numfailed);
 
@@ -480,8 +480,10 @@ int owl_list_regtest(void) {
 
 int owl_fmtext_regtest(void) {
   int numfailed = 0;
+  int start, end;
   owl_fmtext fm1;
   owl_fmtext fm2;
+  owl_regex re;
   char *str;
 
   printf("# BEGIN testing owl_fmtext\n");
@@ -572,6 +574,44 @@ int owl_fmtext_regtest(void) {
               str && !strcmp(str, "12     1234567 1\n"
                                   "12345678       1"));
   owl_free(str);
+
+  /* Test owl_fmtext_search. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123123123123");
+  owl_regex_create(&re, "12");
+  {
+    int count = 0, offset;
+    offset = owl_fmtext_search(&fm1, &re, 0);
+    while (offset >= 0) {
+      FAIL_UNLESS("search matches",
+		  !strncmp("12", owl_fmtext_get_text(&fm1) + offset, 2));
+      count++;
+      offset = owl_fmtext_search(&fm1, &re, offset+1);
+    }
+    FAIL_UNLESS("exactly four matches", count == 4);
+  }
+  owl_regex_cleanup(&re);
+
+  /* Test owl_fmtext_line_number. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123\n456\n");
+  owl_fmtext_append_bold(&fm1, "");
+  FAIL_UNLESS("lines start at 0", 0 == owl_fmtext_line_number(&fm1, 0));
+  FAIL_UNLESS("trailing formatting characters part of false line",
+	      2 == owl_fmtext_line_number(&fm1, owl_fmtext_num_bytes(&fm1)));
+  owl_regex_create_quoted(&re, "456");
+  FAIL_UNLESS("correctly find second line (line 1)",
+	      1 == owl_fmtext_line_number(&fm1, owl_fmtext_search(&fm1, &re, 0)));
+  owl_regex_cleanup(&re);
+
+  /* Test owl_fmtext_line_extents. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123\n456\n789");
+  owl_fmtext_line_extents(&fm1, 1, &start, &end);
+  FAIL_UNLESS("line contents",
+	      !strncmp("456\n", owl_fmtext_get_text(&fm1)+start, end-start));
+  owl_fmtext_line_extents(&fm1, 2, &start, &end);
+  FAIL_UNLESS("point to end of buffer", end == owl_fmtext_num_bytes(&fm1));
 
   owl_fmtext_cleanup(&fm1);
   owl_fmtext_cleanup(&fm2);

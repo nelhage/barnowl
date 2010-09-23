@@ -583,7 +583,7 @@ const char *owl_message_get_header(const owl_message *m) {
  */
 int owl_message_search(owl_message *m, const owl_regex *re)
 {
-  return (owl_fmtext_search(owl_message_get_fmtext(m), re));
+  return owl_fmtext_search(owl_message_get_fmtext(m), re, 0) >= 0;
 }
 
 

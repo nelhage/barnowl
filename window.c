@@ -301,32 +301,43 @@ void owl_window_hide(owl_window *w)
   _owl_window_unrealize(w);
 }
 
-int owl_window_is_shown(owl_window *w)
+bool owl_window_is_shown(owl_window *w)
 {
   return w->shown;
 }
 
-int owl_window_is_realized(owl_window *w)
+bool owl_window_is_realized(owl_window *w)
 {
   return w->win != NULL;
 }
 
-int owl_window_is_toplevel(owl_window *w)
+bool owl_window_is_toplevel(owl_window *w)
 {
   return w->pan != NULL;
 }
 
-int owl_window_is_subwin(owl_window *w)
+bool owl_window_is_subwin(owl_window *w)
 {
   return w->pan == NULL && !w->is_screen;
+}
+
+static bool _owl_window_should_realize(owl_window *w)
+{
+  return owl_window_is_shown(w) &&
+    (!w->parent || owl_window_is_realized(w->parent));
+}
+
+static void _owl_window_realize_later(owl_window *w)
+{
+  if (owl_window_is_realized(w) || !_owl_window_should_realize(w))
+    return;
+  owl_window_dirty(w);
 }
 
 static void _owl_window_realize(owl_window *w)
 {
   /* check if we can create a window */
-  if ((w->parent && w->parent->win == NULL)
-      || !w->shown
-      || w->win != NULL)
+  if (owl_window_is_realized(w) || !_owl_window_should_realize(w))
     return;
   if (w->nlines <= 0 || w->ncols <= 0)
     return;
@@ -336,7 +347,7 @@ static void _owl_window_realize(owl_window *w)
   /* schedule a repaint */
   owl_window_dirty(w);
   /* map the children */
-  owl_window_children_foreach(w, (GFunc)_owl_window_realize, 0);
+  owl_window_children_foreach(w, (GFunc)_owl_window_realize_later, 0);
 }
 
 static void _owl_window_unrealize(owl_window *w)
@@ -385,7 +396,7 @@ static owl_window *_get_cursor(void)
 
 void owl_window_dirty(owl_window *w)
 {
-  if (!owl_window_is_realized(w))
+  if (!_owl_window_should_realize(w))
     return;
   if (!w->dirty) {
     w->dirty = 1;
@@ -404,6 +415,7 @@ void owl_window_dirty_children(owl_window *w)
 static void _owl_window_redraw(owl_window *w)
 {
   if (!w->dirty) return;
+  _owl_window_realize(w);
   if (w->win && !w->is_screen) {
     if (owl_window_is_subwin(w)) {
       /* If a subwin, we might have gotten random touched lines from wsyncup or
@@ -488,7 +500,7 @@ void owl_window_set_position(owl_window *w, int nlines, int ncols, int begin_y, 
     g_signal_emit(w, window_signals[RESIZED], 0);
   if (w->shown) {
     /* ncurses is screwy: give up and recreate windows at the right place */
-    _owl_window_realize(w);
+    _owl_window_realize_later(w);
   }
 }
 

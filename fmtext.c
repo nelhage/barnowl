@@ -298,7 +298,7 @@ static void _owl_fmtext_curs_waddstr(const owl_fmtext *f, WINDOW *w, int do_sear
    
       tmp = p[0];
       p[0] = '\0';
-      if (owl_global_is_search_active(&g)) {
+      if (do_search && owl_global_is_search_active(&g)) {
 	/* Search is active, so highlight search results. */
 	char tmp2;
 	int start, end;
@@ -363,7 +363,7 @@ static void _owl_fmtext_curs_waddstr(const owl_fmtext *f, WINDOW *w, int do_sear
 
 void owl_fmtext_curs_waddstr(const owl_fmtext *f, WINDOW *w)
 {
-  _owl_fmtext_curs_waddstr(f, w, owl_global_is_search_active(&g));
+  _owl_fmtext_curs_waddstr(f, w, 1);
 }
 
 void owl_fmtext_curs_waddstr_without_search(const owl_fmtext *f, WINDOW *w)
@@ -579,6 +579,40 @@ int owl_fmtext_num_lines(const owl_fmtext *f)
   return(lines);
 }
 
+/* Returns the line number, starting at 0, of the character which
+ * contains the byte at 'offset'. Note that a trailing newline is part
+ * of the line it ends. Also, while a trailing line of formatting
+ * characters does not contribute to owl_fmtext_num_lines, those
+ * characters are considered on a new line. */
+int owl_fmtext_line_number(const owl_fmtext *f, int offset)
+{
+  int i, lineno = 0;
+  if (offset >= f->textlen)
+    offset = f->textlen - 1;
+  for (i = 0; i < offset; i++) {
+    if (f->textbuff[i] == '\n')
+      lineno++;
+  }
+  return lineno;
+}
+
+/* Searches for line 'lineno' in 'f'. The returned range, [start,
+ * end), forms a half-open interval for the extent of the line. */
+void owl_fmtext_line_extents(const owl_fmtext *f, int lineno, int *o_start, int *o_end)
+{
+  int start, end;
+  char *newline;
+  for (start = 0; lineno > 0 && start < f->textlen; start++) {
+    if (f->textbuff[start] == '\n')
+      lineno--;
+  }
+  newline = strchr(f->textbuff + start, '\n');
+  /* Include the newline, if it is there. */
+  end = newline ? newline - f->textbuff + 1 : f->textlen;
+  if (o_start) *o_start = start;
+  if (o_end) *o_end = end;
+}
+
 const char *owl_fmtext_get_text(const owl_fmtext *f)
 {
   return(f->textbuff);
@@ -619,13 +653,17 @@ void owl_fmtext_copy(owl_fmtext *dst, const owl_fmtext *src)
   dst->default_bgcolor = src->default_bgcolor;
 }
 
-/* return 1 if the string is found, 0 if not.  This is a case
- *  insensitive search.
+/* Search 'f' for the regex 're' for matches starting at
+ * 'start'. Returns the offset of the first match, -1 if not
+ * found. This is a case-insensitive search.
  */
-int owl_fmtext_search(const owl_fmtext *f, const owl_regex *re)
+int owl_fmtext_search(const owl_fmtext *f, const owl_regex *re, int start)
 {
-  if (owl_regex_compare(re, f->textbuff, NULL, NULL) == 0) return(1);
-  return(0);
+  int offset;
+  if (start > f->textlen ||
+      owl_regex_compare(re, f->textbuff + start, &offset, NULL) != 0)
+    return -1;
+  return offset + start;
 }
 
 

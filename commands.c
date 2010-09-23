@@ -988,6 +988,27 @@ const owl_cmd commands_to_init[]
 		  "exits the popless window",
 		  "", ""),
 
+  OWLCMD_ARGS_CTX("popless:start-command", owl_viewwin_start_command,
+		  OWL_CTX_POPLESS,
+		  "starts a command line in the popless",
+		  "popless:start-command [initial-value]",
+		  "Initializes the command field to initial-value"),
+
+  OWLCMD_ARGS_CTX("popless:search", owl_viewwin_command_search, OWL_CTX_POPLESS,
+		  "search lines for a particular string",
+		  "popless:search [-r] [<string>]",
+		  "The popless:search command will find lines that contain the\n"
+		  "specified string and scroll the popwin there.  If no string\n"
+		  "argument is supplied then the previous one is used.  By\n"
+		  "default searches are done forwards; if -r is used the search\n"
+		  "is performed backwards"),
+
+  OWLCMD_ARGS_CTX("popless:start-search", owl_viewwin_command_start_search, OWL_CTX_POPLESS,
+		  "starts a command line to search for particular string",
+		  "popless:search [-r] [inital-value]",
+		  "Initializes the command-line to search for initial-value. If\n"
+		  "-r is used, the search will be performed backwards."),
+
   OWLCMD_ALIAS("webzephyr", "zwrite daemon.webzephyr -c webzephyr -i"),
 
   /* This line MUST be last! */
@@ -2514,9 +2535,11 @@ char *owl_command_search(int argc, const char *const *argv, const char *buff)
   }
     
   if (argc==1 || (argc==2 && !strcmp(argv[1], "-r"))) {
-    owl_function_search_continue(direction);
+    /* When continuing a search, don't consider the current message. */
+    owl_function_search_helper(false, direction);
   } else {
-    owl_function_search_start(buffstart, direction);
+    owl_function_set_search(buffstart);
+    owl_function_search_helper(true, direction);
   }
   
   return(NULL);
@@ -2527,7 +2550,7 @@ char *owl_command_setsearch(int argc, const char *const *argv, const char *buff)
   const char *buffstart;
 
   buffstart=skiptokens(buff, 1);
-  owl_function_search_start(*buffstart ? buffstart : NULL, OWL_DIRECTION_NONE);
+  owl_function_set_search(*buffstart ? buffstart : NULL);
   
   return(NULL);
 }
@@ -2605,9 +2628,6 @@ void owl_command_edit_cancel(owl_editwin *e)
   }
 
   owl_global_pop_context(&g);
-
-  owl_global_set_typwin_inactive(&g);
-  owl_editwin_delete(e);
 }
 
 void owl_command_edit_history_prev(owl_editwin *e)
@@ -2660,11 +2680,15 @@ void owl_command_edit_done(owl_editwin *e)
     owl_history_reset(hist);
   }
 
-  owl_global_set_typwin_inactive(&g);
+  /* Take a reference to the editwin, so that it survives the pop
+   * context. TODO: We should perhaps refcount or otherwise protect
+   * the context so that, even if a command pops a context, the
+   * context itself will last until the command returns. */
+  owl_editwin_ref(e);
   owl_global_pop_context(&g);
 
   owl_editwin_do_callback(e);
-  owl_editwin_delete(e);
+  owl_editwin_unref(e);
 }
 
 void owl_command_edit_done_or_delete(owl_editwin *e)
@@ -2683,7 +2707,14 @@ void owl_command_edit_done_or_delete(owl_editwin *e)
 
 void owl_command_popless_quit(owl_viewwin *vw)
 {
-  owl_viewwin_cleanup(vw);
-  owl_popwin_close(owl_global_get_popwin(&g));
+  owl_popwin *pw;
+  pw = owl_global_get_popwin(&g);
+  owl_global_set_popwin(&g, NULL);
+  /* Kind of a hack, but you can only have one active viewwin right
+   * now anyway. */
+  if (vw == owl_global_get_viewwin(&g))
+    owl_global_set_viewwin(&g, NULL);
+  owl_viewwin_delete(vw);
+  owl_popwin_delete(pw);
   owl_global_pop_context(&g);
 }

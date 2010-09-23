@@ -253,6 +253,7 @@ owl_message *owl_function_make_outgoing_aim(const char *body, const char *to)
 void owl_function_start_edit_win(const char *line, void (*callback)(owl_editwin *), void *data, void (*cleanup)(void *))
 {
   owl_editwin *e;
+  owl_context *ctx;
   char *s;
 
   /* create and setup the editwin */
@@ -265,7 +266,10 @@ void owl_function_start_edit_win(const char *line, void (*callback)(owl_editwin 
 
   owl_editwin_set_cbdata(e, data, cleanup);
   owl_editwin_set_callback(e, callback);
-  owl_global_push_context(&g, OWL_CTX_EDITMULTI, e, "editmulti", owl_global_get_typwin_window(&g));
+  ctx = owl_editcontext_new(OWL_CTX_EDITMULTI, e, "editmulti",
+                            owl_global_deactivate_editcontext, &g);
+  owl_global_push_context_obj(&g, ctx);
+
 }
 
 static void owl_function_write_setup(const char *noun)
@@ -1222,12 +1226,18 @@ void owl_function_popless_text(const char *text)
   owl_popwin *pw;
   owl_viewwin *v;
 
-  pw=owl_global_get_popwin(&g);
-  v=owl_global_get_viewwin(&g);
-
+  if (owl_global_get_popwin(&g) || owl_global_get_viewwin(&g)) {
+    owl_function_error("Popwin already in use.");
+    return;
+  }
+  pw = owl_popwin_new();
+  owl_global_set_popwin(&g, pw);
   owl_popwin_up(pw);
+
+  v = owl_viewwin_new_text(owl_popwin_get_content(pw), text);
+  owl_global_set_viewwin(&g, v);
+
   owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless", NULL);
-  owl_viewwin_init_text(v, owl_popwin_get_content(pw), text);
 }
 
 void owl_function_popless_fmtext(const owl_fmtext *fm)
@@ -1235,12 +1245,18 @@ void owl_function_popless_fmtext(const owl_fmtext *fm)
   owl_popwin *pw;
   owl_viewwin *v;
 
-  pw=owl_global_get_popwin(&g);
-  v=owl_global_get_viewwin(&g);
-
+  if (owl_global_get_popwin(&g) || owl_global_get_viewwin(&g)) {
+    owl_function_error("Popwin already in use.");
+    return;
+  }
+  pw = owl_popwin_new();
+  owl_global_set_popwin(&g, pw);
   owl_popwin_up(pw);
+
+  v = owl_viewwin_new_fmtext(owl_popwin_get_content(pw), fm);
+  owl_global_set_viewwin(&g, v);
+
   owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless", NULL);
-  owl_viewwin_init_fmtext(v, owl_popwin_get_content(pw), fm);
 }
 
 void owl_function_popless_file(const char *filename)
@@ -1856,6 +1872,7 @@ void owl_callback_command(owl_editwin *e)
 void owl_function_start_command(const char *line)
 {
   owl_editwin *tw;
+  owl_context *ctx;
 
   tw = owl_global_set_typwin_active(&g, OWL_EDITWIN_STYLE_ONELINE, owl_global_get_cmd_history(&g));
 
@@ -1863,25 +1880,31 @@ void owl_function_start_command(const char *line)
 
   owl_editwin_insert_string(tw, line);
 
-  owl_global_push_context(&g, OWL_CTX_EDITLINE, tw, "editline", owl_global_get_typwin_window(&g));
+  ctx = owl_editcontext_new(OWL_CTX_EDITLINE, tw, "editline",
+                            owl_global_deactivate_editcontext, &g);
+  owl_global_push_context_obj(&g, ctx);
   owl_editwin_set_callback(tw, owl_callback_command);
 }
 
 owl_editwin *owl_function_start_question(const char *line)
 {
   owl_editwin *tw;
+  owl_context *ctx;
 
   tw = owl_global_set_typwin_active(&g, OWL_EDITWIN_STYLE_ONELINE, owl_global_get_cmd_history(&g));
 
   owl_editwin_set_locktext(tw, line);
 
-  owl_global_push_context(&g, OWL_CTX_EDITRESPONSE, tw, "editresponse", owl_global_get_typwin_window(&g));
+  ctx = owl_editcontext_new(OWL_CTX_EDITRESPONSE, tw, "editresponse",
+                            owl_global_deactivate_editcontext, &g);
+  owl_global_push_context_obj(&g, ctx);
   return tw;
 }
 
 owl_editwin *owl_function_start_password(const char *line)
 {
   owl_editwin *tw;
+  owl_context *ctx;
 
   tw = owl_global_set_typwin_active(&g, OWL_EDITWIN_STYLE_ONELINE, NULL);
 
@@ -1889,7 +1912,9 @@ owl_editwin *owl_function_start_password(const char *line)
 
   owl_editwin_set_locktext(tw, line);
 
-  owl_global_push_context(&g, OWL_CTX_EDITRESPONSE, tw, "editresponse", owl_global_get_typwin_window(&g));
+  ctx = owl_editcontext_new(OWL_CTX_EDITRESPONSE, tw, "editresponse",
+                            owl_global_deactivate_editcontext, &g);
+  owl_global_push_context_obj(&g, ctx);
   return tw;
 }
 
@@ -2859,10 +2884,8 @@ void owl_function_help_for_command(const char *cmdname)
   owl_fmtext_cleanup(&fm);
 }
 
-void owl_function_search_start(const char *string, int direction)
+void owl_function_set_search(const char *string)
 {
-  /* direction is OWL_DIRECTION_DOWNWARDS or OWL_DIRECTION_UPWARDS or
-   * OWL_DIRECTION_NONE */
   owl_regex re;
 
   if (string && owl_regex_create_quoted(&re, string) == 0) {
@@ -2871,27 +2894,16 @@ void owl_function_search_start(const char *string, int direction)
   } else {
     owl_global_set_search_re(&g, NULL);
   }
-
-  if (direction == OWL_DIRECTION_NONE)
-    owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-  else
-    owl_function_search_helper(0, direction);
 }
 
-void owl_function_search_continue(int direction)
-{
-  /* direction is OWL_DIRECTION_DOWNWARDS or OWL_DIRECTION_UPWARDS */
-  owl_function_search_helper(1, direction);
-}
-
-void owl_function_search_helper(int mode, int direction)
+void owl_function_search_helper(int consider_current, int direction)
 {
   /* move to a message that contains the string.  If direction is
    * OWL_DIRECTION_DOWNWARDS then search fowards, if direction is
    * OWL_DIRECTION_UPWARDS then search backwards.
    *
-   * If mode==0 then it will stay on the current message if it
-   * contains the string.
+   * If consider_current is true then it will stay on the
+   * current message if it contains the string.
    */
 
   const owl_view *v;
@@ -2909,7 +2921,7 @@ void owl_function_search_helper(int mode, int direction)
     return;
   }
 
-  if (mode==0) {
+  if (consider_current) {
   } else if (direction==OWL_DIRECTION_DOWNWARDS) {
     owl_view_iterator_next(it);
   } else {

@@ -310,6 +310,9 @@ typedef struct _owl_context {
   void *data;		/* determined by mode */
   char *keymap;
   owl_window *cursor;
+  void (*deactivate_cb)(struct _owl_context*);
+  void (*delete_cb)(struct _owl_context*);
+  void *cbdata;
 } owl_context;
 
 typedef struct _owl_cmd {	/* command */
@@ -382,21 +385,31 @@ typedef struct _owl_style {
   SV *perlobj;
 } owl_style;
 
+typedef struct _owl_editwin owl_editwin;
+typedef struct _owl_editwin_excursion owl_editwin_excursion;
+
 typedef struct _owl_viewwin {
   owl_fmtext fmtext;
   int textlines;
   int topline;
   int rightshift;
   owl_window *window;
-  gulong sig_redraw_id;
   void (*onclose_hook) (struct _owl_viewwin *vwin, void *data);
   void *onclose_hook_data;
+
+  gulong sig_resize_id;
+  owl_window *content;
+  gulong sig_content_redraw_id;
+  owl_window *status;
+  gulong sig_status_redraw_id;
+  owl_window *cmdwin;
 } owl_viewwin;
   
 typedef struct _owl_popwin {
   owl_window *border;
   owl_window *content;
-  int active;
+  gulong sig_redraw_id;
+  gulong sig_resize_id;
 } owl_popwin;
   
 typedef struct _owl_msgwin {
@@ -449,9 +462,6 @@ typedef struct _owl_history {
   int partial;
   int repeats;
 } owl_history;
-
-typedef struct _owl_editwin owl_editwin;
-typedef struct _owl_editwin_excursion owl_editwin_excursion;
 
 typedef struct _owl_mainpanel {
   owl_window *panel;
@@ -549,7 +559,7 @@ typedef struct _OwlGlobalNotifier OwlGlobalNotifier;
 
 typedef struct _owl_global {
   owl_mainwin mw;
-  owl_popwin pw;
+  owl_popwin *pw;
   owl_msgwin msgwin;
   owl_history cmdhist;		/* command history */
   owl_history msghist;		/* outgoing message history */
@@ -584,7 +594,7 @@ typedef struct _owl_global {
   int config_format;
   void *buffercbdata;
   owl_editwin *tw;
-  owl_viewwin vw;
+  owl_viewwin *vw;
   void *perl;
   int debug;
   time_t starttime;
