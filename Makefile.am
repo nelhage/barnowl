@@ -18,6 +18,9 @@ barnowl_bin_SOURCES = $(BASE_SRCS) \
      owl.c \
      $(GEN_C) $(GEN_H)
 
+man_MANS = doc/barnowl.1
+doc_DATA = doc/intro.txt doc/advanced.txt
+
 barnowl_bin_LDADD = libfaim/libfaim.a
 
 tester_bin_SOURCES = $(BASE_SRCS) \
@@ -35,14 +38,18 @@ CPPFLAGS = -I$(top_srcdir)/ \
            -DBINDIR='"$(bindir)"' \
            $(GIT_FLAGS)
 
-BASE_SRCS=list.c message.c mainwin.c popwin.c zephyr.c messagelist.c \
+CODELIST_SRCS=list.c message.c mainwin.c popwin.c zephyr.c messagelist.c \
      commands.c global.c text.c fmtext.c editwin.c util.c logging.c \
      perlconfig.c keys.c functions.c zwrite.c viewwin.c help.c filter.c \
      regex.c history.c view.c dict.c variable.c filterelement.c pair.c \
      keypress.c keymap.c keybinding.c cmd.c context.c \
      aim.c buddy.c buddylist.c style.c errqueue.c \
-     zbuddylist.c popexec.c obarray.c select.c wcwidth.c \
-     glib_compat.c filterproc.c
+     zbuddylist.c popexec.c select.c wcwidth.c \
+     glib_compat.c mainpanel.c msgwin.c sepbar.c
+
+NORMAL_SRCS = filterproc.c window.c windowcb.c
+
+BASE_SRCS = $(CODELIST_SRCS) $(NORMAL_SRCS)
 
 GEN_C = varstubs.c perlglue.c
 GEN_H = owl_prototypes.h
@@ -64,7 +71,7 @@ perlglue.c: perlglue.xs $(TYPEMAP)
 varstubs.c: stubgen.pl variable.c
 	$(AM_V_GEN)perl $< $(sort $(filter-out $<,$+)) > $@
 
-owl_prototypes.h.new: codelist.pl varstubs.c $(BASE_SRCS)
+owl_prototypes.h.new: codelist.pl varstubs.c $(CODELIST_SRCS)
 	$(AM_V_GEN)perl $< $(sort $(filter-out $<,$+)) > $@
 
 # For emacs flymake-mode

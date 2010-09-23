@@ -211,25 +211,19 @@ void owl_function_adminmsg(const char *header, const char *body)
 
   /* redisplay etc. */
   owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-  owl_global_set_needrefresh(&g);
 }
 
 /* Create an outgoing zephyr message and return a pointer to it.  Does
  * not put it on the global queue, use owl_global_messagequeue_addmsg() for
  * that.
  */
-owl_message *owl_function_make_outgoing_zephyr(const char *body, const char *zwriteline, const char *zsig)
+owl_message *owl_function_make_outgoing_zephyr(const owl_zwrite *z)
 {
   owl_message *m;
-  owl_zwrite zw;
-
-  owl_zwrite_create_from_line(&zw, zwriteline);
-  owl_zwrite_set_zsig(&zw, zsig);
 
   /* create the message */
   m=owl_message_new();
-  owl_message_create_from_zwrite(m, &zw, body);
-  owl_zwrite_cleanup(&zw);
+  owl_message_create_from_zwrite(m, z, owl_zwrite_get_message(z));
 
   return(m);
 }
@@ -271,10 +265,10 @@ void owl_function_start_edit_win(const char *line, void (*callback)(owl_editwin 
 
   owl_editwin_set_cbdata(e, data, cleanup);
   owl_editwin_set_callback(e, callback);
-  owl_global_push_context(&g, OWL_CTX_EDITMULTI, e, "editmulti");
+  owl_global_push_context(&g, OWL_CTX_EDITMULTI, e, "editmulti", owl_global_get_typwin_window(&g));
 }
 
-static void owl_function_write_setup(const char *line, const char *noun, void (*callback)(owl_editwin *))
+static void owl_function_write_setup(const char *noun)
 {
 
   if (!owl_global_get_lockout_ctrld(&g))
@@ -285,78 +279,74 @@ static void owl_function_write_setup(const char *line, const char *noun, void (*
     owl_function_makemsg("Type your %s below.  "
 			 "End with a dot on a line by itself.  ^C will quit.",
 			 noun);
-
-  owl_function_start_edit_win(line, callback,
-                              owl_strdup(line),
-                              owl_free);
 }
 
-void owl_function_zwrite_setup(const char *line)
+void owl_function_zwrite_setup(owl_zwrite *z)
 {
-  owl_zwrite z;
-  int ret;
-
-  /* check the arguments */
-  ret=owl_zwrite_create_from_line(&z, line);
-  if (ret) {
-    owl_function_error("Error in zwrite arguments");
-    owl_zwrite_cleanup(&z);
-    return;
-  }
-
   /* send a ping if necessary */
   if (owl_global_is_txping(&g)) {
-    owl_zwrite_send_ping(&z);
+    owl_zwrite_send_ping(z);
   }
-  owl_zwrite_cleanup(&z);
 
-  owl_function_write_setup(line, "zephyr", &owl_callback_zwrite);
+
+  owl_function_write_setup("zephyr");
+  owl_function_start_edit_win(z->zwriteline,
+                              &owl_callback_zwrite,
+                              z, (void(*)(void*))owl_zwrite_delete);
 }
 
 void owl_function_aimwrite_setup(const char *line)
 {
-  owl_function_write_setup(line, "message", &owl_callback_aimwrite);
+  owl_function_write_setup("message");
+  owl_function_start_edit_win(line,
+                              &owl_callback_aimwrite,
+                              owl_strdup(line),
+                              owl_free);
+
 }
 
 void owl_function_loopwrite_setup(void)
 {
-  owl_function_write_setup("loopwrite", "message", owl_callback_loopwrite);
+  owl_function_write_setup("message");
+  owl_function_start_edit_win("loopwrite",
+                              &owl_callback_loopwrite,
+                              "loopwrite", NULL);
 }
 
 void owl_callback_zwrite(owl_editwin *e) {
-  char *command = owl_editwin_get_cbdata(e);
-  owl_function_zwrite(command,
-                      owl_editwin_get_text(e));
+  owl_zwrite *z = owl_editwin_get_cbdata(e);
+  owl_function_zwrite(z, owl_editwin_get_text(e));
 }
 
 /* send, log and display an outgoing zephyr.  If 'msg' is NULL
  * the message is expected to be set from the zwrite line itself
  */
-void owl_function_zwrite(const char *line, const char *msg)
+void owl_function_zwrite(owl_zwrite *z, const char *msg)
 {
-  owl_zwrite z;
-  const char *mymsg;
   owl_message *m;
+  int ret;
 
-  if(!strncmp(line, "zcrypt", strlen("zcrypt"))) {
-    owl_function_zcrypt(line, msg);
+  if(strcmp(z->cmd, "zcrypt") == 0) {
+    owl_function_zcrypt(z, msg);
     return;
   }
 
   /* create the zwrite and send the message */
-  owl_zwrite_create_from_line(&z, line);
-  owl_zwrite_populate_zsig(&z);
+  owl_zwrite_populate_zsig(z);
   if (msg) {
-    owl_zwrite_set_message(&z, msg);
+    owl_zwrite_set_message(z, msg);
   }
-  owl_zwrite_send_message(&z);
+  ret = owl_zwrite_send_message(z);
+  if (ret != 0) {
+    owl_function_makemsg("Error sending zephyr: %s", error_message(ret));
+    return;
+  }
   owl_function_makemsg("Waiting for ack...");
 
   /* If it's personal */
-  if (owl_zwrite_is_personal(&z)) {
+  if (owl_zwrite_is_personal(z)) {
     /* create the outgoing message */
-    mymsg=owl_zwrite_get_message(&z);
-    m=owl_function_make_outgoing_zephyr(mymsg, line, owl_zwrite_get_zsig(&z));
+    m=owl_function_make_outgoing_zephyr(z);
 
     if (m) {
       owl_global_messagequeue_addmsg(&g, m);
@@ -364,63 +354,57 @@ void owl_function_zwrite(const char *line, const char *msg)
       owl_function_error("Could not create outgoing zephyr message");
     }
   }
-
-  /* free the zwrite */
-  owl_zwrite_cleanup(&z);
 }
 
 /* send, log and display an outgoing zcrypt zephyr.  If 'msg' is NULL
  * the message is expected to be set from the zwrite line itself
  */
-void owl_function_zcrypt(const char *line, const char *msg)
+void owl_function_zcrypt(owl_zwrite *z, const char *msg)
 {
-  owl_zwrite z;
-  const char *mymsg;
   char *cryptmsg;
   owl_message *m;
   const char *argv[7];
   char *zcrypt;
   int rv, status;
+  char *old_msg;
 
   /* create the zwrite and send the message */
-  owl_zwrite_create_from_line(&z, line);
-  owl_zwrite_populate_zsig(&z);
+  owl_zwrite_populate_zsig(z);
   if (msg) {
-    owl_zwrite_set_message(&z, msg);
+    owl_zwrite_set_message(z, msg);
   }
-
-  mymsg=owl_zwrite_get_message(&z);
+  old_msg = owl_strdup(owl_zwrite_get_message(z));
 
   zcrypt = owl_sprintf("%s/zcrypt", owl_get_bindir());
   argv[0] = "zcrypt";
   argv[1] = "-E";
-  argv[2] = "-c"; argv[3] = owl_zwrite_get_class(&z);
-  argv[4] = "-i"; argv[5] = owl_zwrite_get_instance(&z);
+  argv[2] = "-c"; argv[3] = owl_zwrite_get_class(z);
+  argv[4] = "-i"; argv[5] = owl_zwrite_get_instance(z);
   argv[6] = NULL;
 
-  rv = call_filter(zcrypt, argv, mymsg, &cryptmsg, &status);
+  rv = call_filter(zcrypt, argv, owl_zwrite_get_message(z), &cryptmsg, &status);
 
   owl_free(zcrypt);
 
   if (rv || status) {
     if(cryptmsg) owl_free(cryptmsg);
+    owl_free(old_msg);
     owl_function_error("Error in zcrypt, possibly no key found.  Message not sent.");
     owl_function_beep();
-    owl_zwrite_cleanup(&z);
     return;
   }
 
-  owl_zwrite_set_message(&z, cryptmsg);
-  owl_zwrite_set_opcode(&z, "crypt");
-    
-  owl_zwrite_send_message(&z);
+  owl_zwrite_set_message_raw(z, cryptmsg);
+  owl_zwrite_set_opcode(z, "crypt");
+
+  owl_zwrite_send_message(z);
   owl_function_makemsg("Waiting for ack...");
 
   /* If it's personal */
-  if (owl_zwrite_is_personal(&z)) {
-    /* create the outgoing message */
-    mymsg=owl_zwrite_get_message(&z);
-    m=owl_function_make_outgoing_zephyr(mymsg, line, owl_zwrite_get_zsig(&z));
+  if (owl_zwrite_is_personal(z)) {
+    /* Create the outgoing message. Restore the un-crypted message for display. */
+    owl_zwrite_set_message_raw(z, old_msg);
+    m=owl_function_make_outgoing_zephyr(z);
     if (m) {
       owl_global_messagequeue_addmsg(&g, m);
     } else {
@@ -430,7 +414,6 @@ void owl_function_zcrypt(const char *line, const char *msg)
 
   /* free the zwrite */
   owl_free(cryptmsg);
-  owl_zwrite_cleanup(&z);
 }
 
 void owl_callback_aimwrite(owl_editwin *e) {
@@ -755,8 +738,6 @@ void owl_function_lastmsg(void)
 void owl_function_shift_right(void)
 {
   owl_global_set_rightshift(&g, owl_global_get_rightshift(&g)+10);
-  owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-  owl_global_set_needrefresh(&g);
 }
 
 void owl_function_shift_left(void)
@@ -766,8 +747,6 @@ void owl_function_shift_left(void)
   shift=owl_global_get_rightshift(&g);
   if (shift > 0) {
     owl_global_set_rightshift(&g, MAX(shift - 10, 0));
-    owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-    owl_global_set_needrefresh(&g);
   } else {
     owl_function_beep();
     owl_function_makemsg("Already full left");
@@ -929,23 +908,14 @@ void owl_function_quit(void)
   if (owl_global_get_newmsgproc_pid(&g)) {
     kill(owl_global_get_newmsgproc_pid(&g), SIGHUP);
   }
-
-  /* Quit zephyr */
-  owl_zephyr_shutdown();
   
   /* Quit AIM */
   if (owl_global_is_aimloggedin(&g)) {
     owl_aim_logout();
   }
 
-  /* done with curses */
-  endwin();
-
-  /* restore terminal settings */
-  tcsetattr(0, TCSAFLUSH, owl_global_get_startup_tio(&g));
-
   owl_function_debugmsg("Quitting Owl");
-  exit(0);
+  owl_select_quit_loop();
 }
 
 void owl_function_calculate_topmsg(int direction)
@@ -1207,7 +1177,6 @@ void owl_function_beep(void)
 {
   if (owl_global_is_bell(&g)) {
     beep();
-    owl_global_set_needrefresh(&g); /* do we really need this? */
   }
 }
 
@@ -1236,27 +1205,16 @@ void owl_function_unsubscribe(const char *class, const char *inst, const char *r
   }
 }
 
-void owl_function_set_cursor(WINDOW *win)
-{
-  /* Be careful that this window is actually empty, otherwise panels get confused */
-  if (is_wintouched(win)) {
-    owl_function_debugmsg("Warning: owl_function_set_cursor called on dirty window");
-    update_panels();
-  }
-  wnoutrefresh(win);
+static void _dirty_everything(owl_window *w) {
+  if (!owl_window_is_realized(w))
+    return;
+  owl_window_dirty(w);
+  owl_window_children_foreach(w, (GFunc)_dirty_everything, NULL);
 }
 
 void owl_function_full_redisplay(void)
 {
-  touchwin(owl_global_get_curs_recwin(&g));
-  touchwin(owl_global_get_curs_sepwin(&g));
-  touchwin(owl_global_get_curs_typwin(&g));
-  touchwin(owl_global_get_curs_msgwin(&g));
-
-  sepbar("");
-  owl_function_makemsg("");
-
-  owl_global_set_needrefresh(&g);
+  _dirty_everything(owl_window_get_screen());
 }
 
 void owl_function_popless_text(const char *text)
@@ -1268,12 +1226,8 @@ void owl_function_popless_text(const char *text)
   v=owl_global_get_viewwin(&g);
 
   owl_popwin_up(pw);
-  owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless");
-  owl_viewwin_init_text(v, owl_popwin_get_curswin(pw),
-			owl_popwin_get_lines(pw), owl_popwin_get_cols(pw),
-			text);
-  owl_viewwin_redisplay(v);
-  owl_global_set_needrefresh(&g);
+  owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless", NULL);
+  owl_viewwin_init_text(v, owl_popwin_get_content(pw), text);
 }
 
 void owl_function_popless_fmtext(const owl_fmtext *fm)
@@ -1285,12 +1239,8 @@ void owl_function_popless_fmtext(const owl_fmtext *fm)
   v=owl_global_get_viewwin(&g);
 
   owl_popwin_up(pw);
-  owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless");
-  owl_viewwin_init_fmtext(v, owl_popwin_get_curswin(pw),
-		   owl_popwin_get_lines(pw), owl_popwin_get_cols(pw),
-		   fm);
-  owl_viewwin_redisplay(v);
-  owl_global_set_needrefresh(&g);
+  owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless", NULL);
+  owl_viewwin_init_fmtext(v, owl_popwin_get_content(pw), fm);
 }
 
 void owl_function_popless_file(const char *filename)
@@ -1553,13 +1503,12 @@ void owl_function_page_curmsg(int step)
   
   /* redisplay */
   owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-  owl_global_set_needrefresh(&g);
 }
 
 void owl_function_resize_typwin(int newsize)
 {
   owl_global_set_typwin_lines(&g, newsize);
-  owl_global_set_relayout_pending(&g);
+  owl_mainpanel_layout_contents(&g.mainpanel);
 }
 
 void owl_function_mainwin_pagedown(void)
@@ -1673,7 +1622,6 @@ void owl_function_delete_by_id(int id, int flag)
       owl_message_unmark_delete(m);
     }
     owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-    owl_global_set_needrefresh(&g);
   } else {
     owl_function_error("No message with id %d: unable to mark for (un)delete",id);
   }
@@ -1713,7 +1661,6 @@ void owl_function_delete_automsgs(void)
   }
   owl_mainwin_redisplay(owl_global_get_mainwin(&g));
   owl_function_makemsg("%i messages marked for deletion", count);
-  owl_global_set_needrefresh(&g);
 }
 
 void owl_function_status(void)
@@ -1913,12 +1860,10 @@ void owl_function_start_command(const char *line)
   tw = owl_global_set_typwin_active(&g, OWL_EDITWIN_STYLE_ONELINE, owl_global_get_cmd_history(&g));
 
   owl_editwin_set_locktext(tw, "command: ");
-  owl_global_set_needrefresh(&g);
 
   owl_editwin_insert_string(tw, line);
-  owl_editwin_redisplay(tw);
 
-  owl_global_push_context(&g, OWL_CTX_EDITLINE, tw, "editline");
+  owl_global_push_context(&g, OWL_CTX_EDITLINE, tw, "editline", owl_global_get_typwin_window(&g));
   owl_editwin_set_callback(tw, owl_callback_command);
 }
 
@@ -1929,11 +1874,8 @@ owl_editwin *owl_function_start_question(const char *line)
   tw = owl_global_set_typwin_active(&g, OWL_EDITWIN_STYLE_ONELINE, owl_global_get_cmd_history(&g));
 
   owl_editwin_set_locktext(tw, line);
-  owl_global_set_needrefresh(&g);
 
-  owl_editwin_redisplay(tw);
-
-  owl_global_push_context(&g, OWL_CTX_EDITRESPONSE, tw, "editresponse");
+  owl_global_push_context(&g, OWL_CTX_EDITRESPONSE, tw, "editresponse", owl_global_get_typwin_window(&g));
   return tw;
 }
 
@@ -1946,11 +1888,8 @@ owl_editwin *owl_function_start_password(const char *line)
   owl_editwin_set_echochar(tw, '*');
 
   owl_editwin_set_locktext(tw, line);
-  owl_global_set_needrefresh(&g);
 
-  owl_editwin_redisplay(tw);
-
-  owl_global_push_context(&g, OWL_CTX_EDITRESPONSE, tw, "editresponse");
+  owl_global_push_context(&g, OWL_CTX_EDITRESPONSE, tw, "editresponse", owl_global_get_typwin_window(&g));
   return tw;
 }
 
@@ -1985,15 +1924,11 @@ char *owl_function_exec(int argc, const char *const *argv, const char *buff, int
     out = owl_slurp(p);
     pclose(p);
     
-    if (type == OWL_OUTPUT_POPUP) {
-      owl_function_popless_text(out);
-    } else if (type == OWL_OUTPUT_RETURN) {
+    if (type == OWL_OUTPUT_RETURN) {
       owl_free(newbuff);
       return out;
     } else if (type == OWL_OUTPUT_ADMINMSG) {
       owl_function_adminmsg(buff, out);
-    } else {
-      owl_function_popless_text(out);
     }
     owl_free(out);
   }
@@ -2026,8 +1961,6 @@ char *owl_function_perl(int argc, const char *const *argv, const char *buff, int
       owl_function_adminmsg(buff, perlout);
     } else if (type == OWL_OUTPUT_RETURN) {
       return perlout;
-    } else {
-      owl_function_popless_text(perlout);
     }
     owl_free(perlout);
   }
@@ -2128,7 +2061,6 @@ void owl_function_create_filter(int argc, const char *const *argv)
       return;
     }
     owl_filter_set_fgcolor(f, owl_util_string_to_color(argv[3]));
-    owl_global_set_needrefresh(&g);
     owl_mainwin_redisplay(owl_global_get_mainwin(&g));
     return;
   }
@@ -2143,7 +2075,6 @@ void owl_function_create_filter(int argc, const char *const *argv)
       return;
     }
     owl_filter_set_bgcolor(f, owl_util_string_to_color(argv[3]));
-    owl_global_set_needrefresh(&g);
     owl_mainwin_redisplay(owl_global_get_mainwin(&g));
     return;
   }
@@ -2174,7 +2105,6 @@ void owl_function_create_filter(int argc, const char *const *argv)
   if (inuse) {
     owl_function_change_currentview_filter(argv[1]);
   }
-  owl_global_set_needrefresh(&g);
   owl_mainwin_redisplay(owl_global_get_mainwin(&g));
 }
 
@@ -2512,6 +2442,34 @@ void owl_function_delete_curview_msgs(int flag)
   owl_mainwin_redisplay(owl_global_get_mainwin(&g));
 }
 
+static char *owl_function_smartfilter_cc(const owl_message *m) {
+  const char *ccs;
+  char *filtname;
+  char *text;
+  owl_filter *f;
+
+  ccs = owl_message_get_attribute_value(m, "zephyr_ccs");
+
+  filtname = owl_sprintf("conversation-%s", ccs);
+  owl_text_tr(filtname, ' ', '-');
+
+  if (owl_global_get_filter(&g, filtname)) {
+    return filtname;
+  }
+
+  text = owl_sprintf("type ^zephyr$ and filter personal and "
+                     "zephyr_ccs ^%s%s%s$",
+                     owl_getquoting(ccs), ccs, owl_getquoting(ccs));
+
+  f = owl_filter_new_fromstring(filtname, text);
+
+  owl_global_add_filter(&g, f);
+
+  owl_free(text);
+
+  return filtname;
+}
+
 /* Create a filter based on the current message.  Returns the name of
  * a filter or null.  The caller must free this name.
  *
@@ -2563,6 +2521,10 @@ char *owl_function_smartfilter(int type, int invert_related)
   /* narrow personal and login messages to the sender or recip as appropriate */
   if (owl_message_is_type_zephyr(m)) {
     if (owl_message_is_personal(m) || owl_message_is_loginout(m)) {
+      if (owl_message_get_attribute_value(m, "zephyr_ccs") != NULL) {
+        return owl_function_smartfilter_cc(m);
+      }
+
       if (owl_message_is_direction_in(m)) {
         zperson=short_zuser(owl_message_get_sender(m));
       } else {
@@ -2690,7 +2652,6 @@ int owl_function_color_filter(const char *filtname, const char *fgcolor, const c
   }
   owl_filter_set_fgcolor(f, owl_util_string_to_color(fgcolor));
   
-  owl_global_set_needrefresh(&g);
   owl_mainwin_redisplay(owl_global_get_mainwin(&g));
   return(0);
 }
@@ -2854,7 +2815,7 @@ void owl_function_show_keymaps(void)
     kmname = owl_list_get_element(&l, i);
     km = owl_keyhandler_get_keymap(kh, kmname);
     owl_fmtext_append_bold(&fm, "\n\n----------------------------------------------------------------------------------------------------\n\n");
-    owl_keymap_get_details(km, &fm);    
+    owl_keymap_get_details(km, &fm, 0);
   }
   owl_fmtext_append_normal(&fm, "\n");
   
@@ -2880,7 +2841,7 @@ void owl_function_show_keymap(const char *name)
   owl_fmtext_init_null(&fm);
   km = owl_keyhandler_get_keymap(owl_global_get_keyhandler(&g), name);
   if (km) {
-    owl_keymap_get_details(km, &fm);
+    owl_keymap_get_details(km, &fm, 1);
   } else {
     owl_fmtext_append_normal(&fm, "No such keymap...\n");
   }  
@@ -3415,18 +3376,14 @@ void owl_function_showerrs(void)
 void owl_function_makemsg(const char *fmt, ...)
 {
   va_list ap;
-  char buff[2048];
-
-  if (!owl_global_get_curs_msgwin(&g)) return;
+  char *str;
 
   va_start(ap, fmt);
-  werase(owl_global_get_curs_msgwin(&g));
-  
-  vsnprintf(buff, 2048, fmt, ap);
-  owl_function_debugmsg("makemsg: %s", buff);
-  waddstr(owl_global_get_curs_msgwin(&g), buff);  
-  owl_global_set_needrefresh(&g);
+  str = g_strdup_vprintf(fmt, ap);
   va_end(ap);
+
+  owl_function_debugmsg("makemsg: %s", str);
+  owl_msgwin_set_text(&g.msgwin, str);
 }
 
 /* get locations for everyone in .anyone.  If 'notify' is '1' then

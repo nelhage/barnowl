@@ -105,7 +105,7 @@ const owl_cmd commands_to_init[]
 
   OWLCMD_ARGS("zwrite", owl_command_zwrite, OWL_CTX_INTERACTIVE,
 	      "send a zephyr",
-	      "zwrite [-n] [-C] [-c class] [-i instance] [-r realm] [-O opcde] [<user> ...] [-m <message...>]",
+	      "zwrite [-n] [-C] [-c class] [-i instance] [-r realm] [-O opcode] [<user> ...] [-m <message...>]",
 	      "Zwrite send a zephyr to the one or more users specified.\n\n"
 	      "The following options are available:\n\n"
 	      "-m    Specifies a message to send without prompting.\n"
@@ -135,9 +135,9 @@ const owl_cmd commands_to_init[]
 	      "loopwrite",
 	      "Send a local message.\n"),
 
-  OWLCMD_ARGS("zcrypt", owl_command_zcrypt, OWL_CTX_INTERACTIVE,
+  OWLCMD_ARGS("zcrypt", owl_command_zwrite, OWL_CTX_INTERACTIVE,
 	      "send an encrypted zephyr",
-	      "zcrypt [-n] [-C] [-c class] [-i instance] [-r realm] [-O opcde] [-m <message...>]\n",
+	      "zcrypt [-n] [-C] [-c class] [-i instance] [-r realm] [-O opcode] [-m <message...>]\n",
 	      "Behaves like zwrite but uses encryption.  Not for use with\n"
 	      "personal messages\n"),
   
@@ -147,7 +147,7 @@ const owl_cmd commands_to_init[]
 	      "If -e is specified, the zwrite command line is presented to\n"
 	      "allow editing.\n\n"
 	      "If 'sender' is specified, reply to the sender.\n\n"
-	      "If 'all' or no args are specified, reply publically to the\n"
+	      "If 'all' or no args are specified, reply publicly to the\n"
 	      "same class/instance for non-personal messages and to the\n"
 	      "sender for personal messages.\n\n"
 	      "If 'zaway' is specified, replies with a zaway message.\n\n"),
@@ -265,7 +265,7 @@ const owl_cmd commands_to_init[]
 	      "suppress a given zephyr triplet",
 	      "zpunt <class> <instance> [recipient]\n"
 	      "zpunt <instance>",
-	      "The zpunt command will supress message to the specified\n"
+	      "The zpunt command will suppress messages to the specified\n"
 	      "zephyr triplet.  In the second usage messages are suppressed\n"
 	      "for class MESSAGE and the named instance.\n\n"
 	      "SEE ALSO:  zunpunt, show zpunts\n"),
@@ -282,7 +282,7 @@ const owl_cmd commands_to_init[]
 	      "suppress an arbitrary filter",
 	      "punt <filter-text>",
 	      "punt <filter-text (multiple words)>\n"
-	      "The punt command will supress message to the specified\n"
+	      "The punt command will suppress messages to the specified\n"
 	      "filter\n\n"
 	      "SEE ALSO:  unpunt, zpunt, show zpunts\n"),
 
@@ -585,7 +585,7 @@ const owl_cmd commands_to_init[]
 	      "by the\n 'view_home' variable.  The style can be set by listing the\n"
               "name style after the -s argument.\n"
 	      "\n"
-	      "The other usages listed above are abbreivated forms that simply set\n"
+	      "The other usages listed above are abbreviated forms that simply set\n"
 	      "the filter of the current view. The -d option allows you to write a\n"
               "filter expression that will be dynamically created by owl and then\n"
               "applied as the view's filter\n"
@@ -593,7 +593,7 @@ const owl_cmd commands_to_init[]
 
   OWLCMD_ARGS("smartnarrow", owl_command_smartnarrow, OWL_CTX_INTERACTIVE,
 	      "view only messages similar to the current message",
-	      "smartnarrow [-i | --instance]  [-r | --relatde]",
+	      "smartnarrow [-i | --instance]  [-r | --related]",
 	      "If the curmsg is a personal message narrow\n"
 	      "   to the conversation with that user.\n"
 	      "If the curmsg is a <MESSAGE, foo, *>\n"
@@ -613,7 +613,7 @@ const owl_cmd commands_to_init[]
 	      "If the curmsg is a <MESSAGE, foo, *>\n"
 	      "   message, the filter is to that instance.\n"
 	      "If the curmsg is a class message, the filter is that class.\n"
-	      "If the curmsg is a class message and '-i' is specied\n"
+	      "If the curmsg is a class message and '-i' is specified\n"
 	      "    the filter is to that class and instance.\n"),
 
   OWLCMD_ARGS("viewclass", owl_command_viewclass, OWL_CTX_INTERACTIVE,
@@ -673,7 +673,7 @@ const owl_cmd commands_to_init[]
 	      "Show styles will list the names of all styles available\n"
 	      "for formatting messages.\n\n"
 	      "Show variables will list the names of all variables.\n\n"
-	      "Show errors will show a list of errors ecountered by Owl.\n\n"
+	      "Show errors will show a list of errors encountered by Owl.\n\n"
 	      "SEE ALSO: filter, view, alias, bindkey, help\n"),
   
   OWLCMD_ARGS("delete", owl_command_delete, OWL_CTX_INTERACTIVE,
@@ -742,7 +742,7 @@ const owl_cmd commands_to_init[]
   OWLCMD_ARGS("setsearch", owl_command_setsearch, OWL_CTX_INTERACTIVE,
 	      "set the search highlight string without searching",
 	      "setsearch <string>",
-	      "The setsearch command highlights all occurences of its\n"
+	      "The setsearch command highlights all occurrences of its\n"
           "argument and makes it the default argument for future\n"
           "search commands, but does not move the cursor.  With\n"
           "no argument, it makes search highlighting inactive."),
@@ -1360,7 +1360,6 @@ void owl_command_resize(void)
 void owl_command_redisplay(void)
 {
   owl_function_full_redisplay();
-  owl_global_set_needrefresh(&g);
 }
 
 char *owl_command_get_shift(int argc, const char *const *argv, const char *buff)
@@ -1376,8 +1375,6 @@ char *owl_command_get_shift(int argc, const char *const *argv, const char *buff)
 void owl_command_set_shift(int shift)
 {
   owl_global_set_rightshift(&g, shift);
-  owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-  owl_global_set_needrefresh(&g);
 }
 
 void owl_command_unsuball(void)
@@ -1903,25 +1900,30 @@ void owl_command_status(void)
 
 char *owl_command_zwrite(int argc, const char *const *argv, const char *buff)
 {
-  owl_zwrite z;
+  owl_zwrite *z;
 
   if (!owl_global_is_havezephyr(&g)) {
     owl_function_makemsg("Zephyr is not available");
     return(NULL);
   }
   /* check for a zwrite -m */
-  owl_zwrite_create_from_line(&z, buff);
-  if (owl_zwrite_is_message_set(&z)) {
-    owl_function_zwrite(buff, NULL);
-    owl_zwrite_cleanup(&z);
-    return (NULL);
+  z = owl_zwrite_new(buff);
+  if (!z) {
+    owl_function_error("Error in zwrite arguments");
+    return NULL;
   }
-  owl_zwrite_cleanup(&z);
+
+  if (owl_zwrite_is_message_set(z)) {
+    owl_function_zwrite(z, NULL);
+    owl_zwrite_delete(z);
+    return NULL;
+  }
 
   if (argc < 2) {
+    owl_zwrite_delete(z);
     owl_function_makemsg("Not enough arguments to the zwrite command.");
   } else {
-    owl_function_zwrite_setup(buff);
+    owl_function_zwrite_setup(z);
   }
   return(NULL);
 }
@@ -2008,31 +2010,6 @@ char *owl_command_aimwrite(int argc, const char *const *argv, const char *buff)
 char *owl_command_loopwrite(int argc, const char *const *argv, const char *buff)
 {
   owl_function_loopwrite_setup();
-  return(NULL);
-}
-
-char *owl_command_zcrypt(int argc, const char *const *argv, const char *buff)
-{
-  owl_zwrite z;
-
-  if (!owl_global_is_havezephyr(&g)) {
-    owl_function_makemsg("Zephyr is not available");
-    return(NULL);
-  }
-  /* check for a zcrypt -m */
-  owl_zwrite_create_from_line(&z, buff);
-  if (owl_zwrite_is_message_set(&z)) {
-    owl_function_zcrypt(buff, NULL);
-    owl_zwrite_cleanup(&z);
-    return (NULL);
-  }
-  owl_zwrite_cleanup(&z);
-
-  if (argc < 2) {
-    owl_function_makemsg("Not enough arguments to the zcrypt command.");
-  } else {
-    owl_function_zwrite_setup(buff);
-  }
   return(NULL);
 }
 
@@ -2170,10 +2147,6 @@ char *owl_command_view(int argc, const char *const *argv, const char *buff)
       owl_function_change_currentview_filter(owl_global_get_view_home(&g));
       argc--;
       argv++;
-    } else if (!strcmp(argv[0], "-r")) {
-      const char *foo;
-      foo=owl_function_create_negative_filter(owl_view_get_filtname(owl_global_get_current_view(&g)));
-      owl_function_change_currentview_filter(foo);
     } else if (!strcmp(argv[0], "-s")) {
       if (argc<2) {
 	owl_function_makemsg("Too few argments to the view command");
@@ -2631,7 +2604,6 @@ void owl_command_edit_cancel(owl_editwin *e)
     owl_history_reset(hist);
   }
 
-  owl_global_set_needrefresh(&g);
   owl_global_pop_context(&g);
 
   owl_global_set_typwin_inactive(&g);
@@ -2652,8 +2624,6 @@ void owl_command_edit_history_prev(owl_editwin *e)
   if (ptr) {
     owl_editwin_clear(e);
     owl_editwin_insert_string(e, ptr);
-    owl_editwin_redisplay(e);
-    owl_global_set_needrefresh(&g);
   } else {
     owl_function_beep();
   }
@@ -2669,8 +2639,6 @@ void owl_command_edit_history_next(owl_editwin *e)
   if (ptr) {
     owl_editwin_clear(e);
     owl_editwin_insert_string(e, ptr);
-    owl_editwin_redisplay(e);
-    owl_global_set_needrefresh(&g);
   } else {
     owl_function_beep();
   }
@@ -2680,8 +2648,6 @@ char *owl_command_edit_insert_text(owl_editwin *e, int argc, const char *const *
 {
   buff = skiptokens(buff, 1);
   owl_editwin_insert_string(e, buff);
-  owl_editwin_redisplay(e);
-  owl_global_set_needrefresh(&g);  
   return NULL;
 }
 
@@ -2696,7 +2662,6 @@ void owl_command_edit_done(owl_editwin *e)
 
   owl_global_set_typwin_inactive(&g);
   owl_global_pop_context(&g);
-  owl_global_set_needrefresh(&g);
 
   owl_editwin_do_callback(e);
   owl_editwin_delete(e);
@@ -2718,8 +2683,7 @@ void owl_command_edit_done_or_delete(owl_editwin *e)
 
 void owl_command_popless_quit(owl_viewwin *vw)
 {
+  owl_viewwin_cleanup(vw);
   owl_popwin_close(owl_global_get_popwin(&g));
   owl_global_pop_context(&g);
-  owl_viewwin_cleanup(vw);
-  owl_global_set_needrefresh(&g);
 }

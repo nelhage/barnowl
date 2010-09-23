@@ -12,13 +12,14 @@
 #define MAXHOSTNAMELEN 256
 #endif
 
+static void _owl_global_init_windows(owl_global *g);
+
 void owl_global_init(owl_global *g) {
   struct hostent *hent;
   char hostname[MAXHOSTNAMELEN];
   char *cd;
 
-  g->malloced=0;
-  g->freed=0;
+  g_type_init();
 
   gethostname(hostname, MAXHOSTNAMELEN);
   hent=gethostbyname(hostname);
@@ -28,16 +29,18 @@ void owl_global_init(owl_global *g) {
     g->thishost=owl_strdup(hent->h_name);
   }
 
+  g->lines=LINES;
+  g->cols=COLS;
+  /* We shouldn't need this if we initialize lines and cols before the first
+   * owl_window_get_screen, but to be safe, we synchronize. */
+  owl_window_resize(owl_window_get_screen(), g->lines, g->cols);
+
   g->context_stack = NULL;
-  owl_global_push_context(g, OWL_CTX_STARTUP, NULL, NULL);
+  owl_global_push_context(g, OWL_CTX_STARTUP, NULL, NULL, NULL);
   g->markedmsgid=-1;
-  g->needrefresh=1;
   g->startupargs=NULL;
 
   owl_variable_dict_setup(&(g->vars));
-
-  g->lines=LINES;
-  g->cols=COLS;
 
   g->rightshift=0;
 
@@ -49,11 +52,10 @@ void owl_global_init(owl_global *g) {
   owl_dict_create(&(g->filters));
   g->filterlist = NULL;
   owl_list_create(&(g->puntlist));
-  owl_list_create(&(g->messagequeue));
+  g->messagequeue = g_queue_new();
   owl_dict_create(&(g->styledict));
   g->curmsg_vert_offset=0;
   g->resizepending=0;
-  g->relayoutpending = 0;
   g->direction=OWL_DIRECTION_DOWNWARDS;
   g->zaway=0;
   if (has_colors()) {
@@ -68,14 +70,11 @@ void owl_global_init(owl_global *g) {
   g->newmsgproc_pid=0;
   
   owl_global_set_config_format(g, 0);
-  owl_global_set_userclue(g, OWL_USERCLUE_NONE);
   owl_global_set_no_have_config(g);
   owl_history_init(&(g->msghist));
   owl_history_init(&(g->cmdhist));
   owl_history_set_norepeats(&(g->cmdhist));
   g->nextmsgid=0;
-
-  _owl_global_setup_windows(g);
 
   /* Fill in some variables which don't have constant defaults */
   /* TODO: come back later and check passwd file first */
@@ -87,7 +86,7 @@ void owl_global_init(owl_global *g) {
   owl_global_set_confdir(g, cd);
   owl_free(cd);
 
-  owl_popwin_init(&(g->pw));
+  _owl_global_init_windows(g);
 
   g->aim_screenname=NULL;
   g->aim_screenname_for_filters=NULL;
@@ -107,14 +106,25 @@ void owl_global_init(owl_global *g) {
   g->zaldlist = NULL;
   g->pseudologin_notify = 0;
 
-  owl_obarray_init(&(g->obarray));
-
   owl_message_init_fmtext_cache();
   owl_list_create(&(g->io_dispatch_list));
   owl_list_create(&(g->psa_list));
   g->timerlist = NULL;
   g->interrupted = FALSE;
   g->fmtext_seq = 0;
+}
+
+static void _owl_global_init_windows(owl_global *g)
+{
+  /* Create the main window */
+  owl_mainpanel_init(&(g->mainpanel));
+
+  /* Create the widgets */
+  owl_popwin_init(&(g->pw));
+  owl_msgwin_init(&(g->msgwin), g->mainpanel.msgwin);
+  owl_sepbar_init(g->mainpanel.sepwin);
+
+  owl_window_set_default_cursor(g->mainpanel.sepwin);
 
   /* set up a pad for input */
   g->input_pad = newpad(1, 1);
@@ -123,68 +133,19 @@ void owl_global_init(owl_global *g) {
   meta(g->input_pad, 1);
 }
 
+void owl_global_sepbar_dirty(owl_global *g)
+{
+  owl_window_dirty(g->mainpanel.sepwin);
+}
+
 /* Called once perl has been initialized */
 void owl_global_complete_setup(owl_global *g)
 {
-  owl_mainwin_init(&(g->mw));
+  owl_mainwin_init(&(g->mw), g->mainpanel.recwin);
   g->msglist = owl_messagelist_new();
   g->curmsg = owl_view_iterator_new();
   g->topmsg = owl_view_iterator_new();
   owl_cmddict_setup(&(g->cmds));
-}
-
-/* If *pan does not exist, we create a new panel, otherwise we replace the
-   window in *pan with win.
-
-   libpanel PANEL objects cannot exist without owner a valid window. This
-   maintains the invariant for _owl_global_setup_windows. */
-void _owl_panel_set_window(PANEL **pan, WINDOW *win)
-{
-  WINDOW *oldwin;
-
-  if (win == NULL) {
-    owl_function_debugmsg("_owl_panel_set_window: passed NULL win (failed to allocate?)");
-    endwin();
-    exit(50);
-  }
-
-  if (*pan) {
-    oldwin = panel_window(*pan);
-    replace_panel(*pan, win);
-    delwin(oldwin);
-  } else {
-    *pan = new_panel(win);
-  }
-}
-
-void _owl_global_setup_windows(owl_global *g) {
-  int cols, typwin_lines;
-
-  cols=g->cols;
-  typwin_lines=owl_global_get_typwin_lines(g);
-
-  /* set the new window sizes */
-  g->recwinlines=g->lines-(typwin_lines+2);
-  if (g->recwinlines<0) {
-    /* gotta deal with this */
-    g->recwinlines=0;
-  }
-
-  /* create the new windows */
-  _owl_panel_set_window(&g->recpan, newwin(g->recwinlines, cols, 0, 0));
-  _owl_panel_set_window(&g->seppan, newwin(1, cols, g->recwinlines, 0));
-  _owl_panel_set_window(&g->msgpan, newwin(1, cols, g->recwinlines+1, 0));
-  _owl_panel_set_window(&g->typpan, newwin(typwin_lines, cols, g->recwinlines+2, 0));
-
-  if (g->tw)
-      owl_editwin_set_curswin(g->tw, owl_global_get_curs_typwin(g), typwin_lines, g->cols);
-
-  idlok(owl_global_get_curs_typwin(g), FALSE);
-  idlok(owl_global_get_curs_recwin(g), FALSE);
-  idlok(owl_global_get_curs_sepwin(g), FALSE);
-  idlok(owl_global_get_curs_msgwin(g), FALSE);
-
-  wmove(owl_global_get_curs_typwin(g), 0, 0);
 }
 
 owl_context *owl_global_get_context(owl_global *g) {
@@ -193,26 +154,29 @@ owl_context *owl_global_get_context(owl_global *g) {
   return g->context_stack->data;
 }
 
-static void owl_global_lookup_keymap(owl_global *g) {
-  owl_context *c = owl_global_get_context(g);
-  if (!c || !c->keymap)
+static void owl_global_activate_context(owl_global *g, owl_context *c) {
+  if (!c)
     return;
 
-  if (!owl_keyhandler_activate(owl_global_get_keyhandler(g), c->keymap)) {
-    owl_function_error("Unable to activate keymap '%s'", c->keymap);
+  if (c->keymap) {
+    if (!owl_keyhandler_activate(owl_global_get_keyhandler(g), c->keymap)) {
+      owl_function_error("Unable to activate keymap '%s'", c->keymap);
+    }
   }
+  owl_window_set_cursor(c->cursor);
 }
 
-void owl_global_push_context(owl_global *g, int mode, void *data, const char *keymap) {
+void owl_global_push_context(owl_global *g, int mode, void *data, const char *keymap, owl_window *cursor) {
   owl_context *c;
   if (!(mode & OWL_CTX_MODE_BITS))
     mode |= OWL_CTX_INTERACTIVE;
   c = owl_malloc(sizeof *c);
   c->mode = mode;
   c->data = data;
+  c->cursor = cursor ? g_object_ref(cursor) : NULL;
   c->keymap = owl_strdup(keymap);
   g->context_stack = g_list_prepend(g->context_stack, c);
-  owl_global_lookup_keymap(g);
+  owl_global_activate_context(g, owl_global_get_context(g));
 }
 
 void owl_global_pop_context(owl_global *g) {
@@ -222,9 +186,11 @@ void owl_global_pop_context(owl_global *g) {
   c = owl_global_get_context(g);
   g->context_stack = g_list_delete_link(g->context_stack,
                                         g->context_stack);
+  if (c->cursor)
+    g_object_unref(c->cursor);
   owl_free(c->keymap);
   owl_free(c);
-  owl_global_lookup_keymap(g);
+  owl_global_activate_context(g, owl_global_get_context(g));
 }
 
 int owl_global_get_lines(const owl_global *g) {
@@ -236,7 +202,7 @@ int owl_global_get_cols(const owl_global *g) {
 }
 
 int owl_global_get_recwin_lines(const owl_global *g) {
-  return(g->recwinlines);
+  return g->mainpanel.recwinlines;
 }
 
 /* curmsg */
@@ -306,43 +272,16 @@ owl_keyhandler *owl_global_get_keyhandler(owl_global *g) {
   return(&(g->kh));
 }
 
-/* curses windows */
+/* underlying owl_windows */
 
-WINDOW *owl_global_get_curs_recwin(const owl_global *g) {
-  return panel_window(g->recpan);
-}
-
-WINDOW *owl_global_get_curs_sepwin(const owl_global *g) {
-  return panel_window(g->seppan);
-}
-
-WINDOW *owl_global_get_curs_msgwin(const owl_global *g) {
-  return panel_window(g->msgpan);
-}
-
-WINDOW *owl_global_get_curs_typwin(const owl_global *g) {
-  return panel_window(g->typpan);
+owl_window *owl_global_get_typwin_window(const owl_global *g) {
+  return g->mainpanel.typwin;
 }
 
 /* typwin */
 
 owl_editwin *owl_global_get_typwin(const owl_global *g) {
   return(g->tw);
-}
-
-/* refresh */
-
-int owl_global_is_needrefresh(const owl_global *g) {
-  if (g->needrefresh==1) return(1);
-  return(0);
-}
-
-void owl_global_set_needrefresh(owl_global *g) {
-  g->needrefresh=1;
-}
-
-void owl_global_set_noneedrefresh(owl_global *g) {
-  g->needrefresh=0;
 }
 
 /* variable dictionary */
@@ -360,7 +299,8 @@ owl_cmddict *owl_global_get_cmddict(owl_global *g) {
 /* rightshift */
 
 void owl_global_set_rightshift(owl_global *g, int i) {
-  g->rightshift=i;
+  g->rightshift = i;
+  owl_mainwin_redisplay(owl_global_get_mainwin(g));
 }
 
 int owl_global_get_rightshift(const owl_global *g) {
@@ -375,7 +315,12 @@ owl_editwin *owl_global_set_typwin_active(owl_global *g, int style, owl_history 
   if (d > 0 && style == OWL_EDITWIN_STYLE_MULTILINE)
       owl_function_resize_typwin(owl_global_get_typwin_lines(g) + d);
 
-  g->tw = owl_editwin_new(owl_global_get_curs_typwin(g),
+  if (g->typwin_erase_id) {
+    g_signal_handler_disconnect(owl_global_get_typwin_window(g), g->typwin_erase_id);
+    g->typwin_erase_id = 0;
+  }
+
+  g->tw = owl_editwin_new(owl_global_get_typwin_window(g),
                           owl_global_get_typwin_lines(g),
                           g->cols,
                           style,
@@ -388,7 +333,12 @@ void owl_global_set_typwin_inactive(owl_global *g) {
   if (d > 0 && owl_editwin_get_style(g->tw) == OWL_EDITWIN_STYLE_MULTILINE)
       owl_function_resize_typwin(owl_global_get_typwin_lines(g) - d);
 
-  werase(owl_global_get_curs_typwin(g));
+  if (!g->typwin_erase_id) {
+    g->typwin_erase_id =
+      g_signal_connect(owl_global_get_typwin_window(g), "redraw", G_CALLBACK(owl_window_erase_cb), NULL);
+  }
+  owl_window_dirty(owl_global_get_typwin_window(g));
+
   g->tw = NULL;
 }
 
@@ -396,10 +346,6 @@ void owl_global_set_typwin_inactive(owl_global *g) {
 
 void owl_global_set_resize_pending(owl_global *g) {
   g->resizepending=1;
-}
-
-void owl_global_set_relayout_pending(owl_global *g) {
-  g->relayoutpending = 1;
 }
 
 const char *owl_global_get_homedir(const owl_global *g) {
@@ -479,7 +425,7 @@ int owl_global_have_config(owl_global *g) {
  * Compute the size of the terminal. Try a ioctl, fallback to other stuff on
  * fail.
  */
-static void _owl_global_get_size(int *lines, int *cols) {
+void owl_global_get_terminal_size(int *lines, int *cols) {
   struct winsize size;
   /* get the new size */
   ioctl(STDIN_FILENO, TIOCGWINSZ, &size);
@@ -496,72 +442,15 @@ static void _owl_global_get_size(int *lines, int *cols) {
   }
 }
 
-void owl_global_resize(owl_global *g, int x, int y) {
-  /* resize the screen.  If x or y is 0 use the terminal size */
+void owl_global_check_resize(owl_global *g) {
+  /* resize the screen.  If lines or cols is 0 use the terminal size */
   if (!g->resizepending) return;
   g->resizepending = 0;
 
-  _owl_global_get_size(&g->lines, &g->cols);
-  if (x != 0) {
-    g->lines = x;
-  }
-  if (y != 0) {
-    g->cols = y;
-  }
-
-  resizeterm(g->lines, g->cols);
+  owl_global_get_terminal_size(&g->lines, &g->cols);
+  owl_window_resize(owl_window_get_screen(), g->lines, g->cols);
 
   owl_function_debugmsg("New size is %i lines, %i cols.", g->lines, g->cols);
-  owl_global_set_relayout_pending(g);
-}
-
-void owl_global_relayout(owl_global *g) {
-  owl_popwin *pw;
-  owl_viewwin *vw;
-
-  if (!g->relayoutpending) return;
-  g->relayoutpending = 0;
-
-  owl_function_debugmsg("Relayouting...");
-
-  /* re-initialize the windows */
-  _owl_global_setup_windows(g);
-
-  /* in case any styles rely on the current width */
-  owl_messagelist_invalidate_formats(owl_global_get_msglist(g));
-
-  /* recalculate the topmsg to make sure the current message is on
-   * screen */
-  owl_function_calculate_topmsg(OWL_DIRECTION_NONE);
-
-  /* recreate the popwin */
-  pw = owl_global_get_popwin(g);
-  if (owl_popwin_is_active(pw)) {
-    /*
-     * This is somewhat hacky; we probably want a proper windowing layer. We
-     * destroy the popwin and recreate it. Then the viewwin is redirected to
-     * the new window.
-     */
-    vw = owl_global_get_viewwin(g);
-    owl_popwin_close(pw);
-    owl_popwin_up(pw);
-    owl_viewwin_set_curswin(vw, owl_popwin_get_curswin(pw),
-	owl_popwin_get_lines(pw), owl_popwin_get_cols(pw));
-    owl_viewwin_redisplay(vw);
-  }
-
-  /* refresh stuff */
-  g->needrefresh=1;
-  owl_mainwin_redisplay(&(g->mw));
-  sepbar(NULL);
-  if (g->tw)
-      owl_editwin_redisplay(g->tw);
-  else
-    werase(owl_global_get_curs_typwin(g));
-
-  owl_function_full_redisplay();
-
-  owl_function_makemsg("");
 }
 
 /* debug */
@@ -598,25 +487,6 @@ const char *owl_global_get_hostname(const owl_global *g) {
   return("");
 }
 
-/* userclue */
-
-void owl_global_set_userclue(owl_global *g, int clue) {
-  g->userclue=clue;
-}
-
-void owl_global_add_userclue(owl_global *g, int clue) {
-  g->userclue|=clue;
-}
-
-int owl_global_get_userclue(const owl_global *g) {
-  return(g->userclue);
-}
-
-int owl_global_is_userclue(const owl_global *g, int clue) {
-  if (g->userclue & clue) return(1);
-  return(0);
-}
-
 /* viewwin */
 
 owl_viewwin *owl_global_get_viewwin(owl_global *g) {
@@ -631,7 +501,7 @@ int owl_global_get_curmsg_vert_offset(const owl_global *g) {
 }
 
 void owl_global_set_curmsg_vert_offset(owl_global *g, int i) {
-  g->curmsg_vert_offset=i;
+  g->curmsg_vert_offset = i;
 }
 
 /* startup args */
@@ -890,7 +760,7 @@ void owl_global_set_bossconn(owl_global *g, aim_conn_t *conn)
 
 void owl_global_messagequeue_addmsg(owl_global *g, owl_message *m)
 {
-  owl_list_append_element(&(g->messagequeue), m);
+  g_queue_push_tail(g->messagequeue, m);
 }
 
 /* pop off the first message and return it.  Return NULL if the queue
@@ -901,16 +771,15 @@ owl_message *owl_global_messagequeue_popmsg(owl_global *g)
 {
   owl_message *out;
 
-  if (owl_list_get_size(&(g->messagequeue))==0) return(NULL);
-  out=owl_list_get_element(&(g->messagequeue), 0);
-  owl_list_remove_element(&(g->messagequeue), 0);
-  return(out);
+  if (g_queue_is_empty(g->messagequeue))
+    return NULL;
+  out = g_queue_pop_head(g->messagequeue);
+  return out;
 }
 
 int owl_global_messagequeue_pending(owl_global *g)
 {
-  if (owl_list_get_size(&(g->messagequeue))==0) return(0);
-  return(1);
+  return !g_queue_is_empty(g->messagequeue);
 }
 
 owl_buddylist *owl_global_get_buddylist(owl_global *g)
@@ -1036,11 +905,6 @@ void owl_global_set_pseudologin_notify(owl_global *g, int notify)
 struct termios *owl_global_get_startup_tio(owl_global *g)
 {
   return(&(g->startup_tio));
-}
-
-const char * owl_global_intern(owl_global *g, const char * string)
-{
-  return owl_obarray_insert(&(g->obarray), string);
 }
 
 owl_list *owl_global_get_io_dispatch_list(owl_global *g)

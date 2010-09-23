@@ -174,9 +174,9 @@ static void _owl_fmtext_scan_attributes(const owl_fmtext *f, int start, char *at
   }
 }  
 
-/* Internal function.  Append text from 'in' between index 'start' and
- * 'stop', inclusive, to the end of 'f'. This function works with
- * bytes.
+/* Internal function.  Append text from 'in' between index 'start'
+ * inclusive and 'stop' exclusive, to the end of 'f'. This function
+ * works with bytes.
  */
 static void _owl_fmtext_append_fmtext(owl_fmtext *f, const owl_fmtext *in, int start, int stop)
 {
@@ -193,7 +193,7 @@ static void _owl_fmtext_append_fmtext(owl_fmtext *f, const owl_fmtext *in, int s
 
   /* We will reset to defaults after appending the text. We may need
      to set initial attributes. */
-  newlen=strlen(f->textbuff)+(stop-start+1) + (4 * (a + fg + bg)) + 12;
+  newlen=strlen(f->textbuff)+(stop-start) + (4 * (a + fg + bg)) + 12;
   _owl_fmtext_realloc(f, newlen);
 
   if (a)
@@ -206,7 +206,7 @@ static void _owl_fmtext_append_fmtext(owl_fmtext *f, const owl_fmtext *in, int s
     strncat(f->textbuff, attrbuff,
 	    g_unichar_to_utf8(OWL_FMTEXT_UC_BGCOLOR | bgcolor, attrbuff));
 
-  strncat(f->textbuff, in->textbuff+start, stop-start+1);
+  strncat(f->textbuff, in->textbuff+start, stop-start);
 
   /* Reset attributes */
   strcat(f->textbuff, OWL_FMTEXT_UTF8_BGDEFAULT);
@@ -371,6 +371,43 @@ void owl_fmtext_curs_waddstr_without_search(const owl_fmtext *f, WINDOW *w)
   _owl_fmtext_curs_waddstr(f, w, 0);
 }
 
+/* Expands tabs. Tabs are expanded as if given an initial indent of start. */
+void owl_fmtext_expand_tabs(const owl_fmtext *in, owl_fmtext *out, int start) {
+  int col = start, numcopied = 0;
+  char *ptr;
+
+  /* Copy the default attributes. */
+  out->default_attrs = in->default_attrs;
+  out->default_fgcolor = in->default_fgcolor;
+  out->default_bgcolor = in->default_bgcolor;
+
+  for (ptr = in->textbuff;
+       ptr < in->textbuff + in->textlen;
+       ptr = g_utf8_next_char(ptr)) {
+    gunichar c = g_utf8_get_char(ptr);
+    int chwidth;
+    if (c == '\t') {
+      /* Copy up to this tab */
+      _owl_fmtext_append_fmtext(out, in, numcopied, ptr - in->textbuff);
+      /* and then copy spaces for the tab. */
+      chwidth = OWL_TAB_WIDTH - (col % OWL_TAB_WIDTH);
+      owl_fmtext_append_spaces(out, chwidth);
+      col += chwidth;
+      numcopied = g_utf8_next_char(ptr) - in->textbuff;
+    } else {
+      /* Just update col. We'll append later. */
+      if (c == '\n') {
+        col = start;
+      } else if (!owl_fmtext_is_format_char(c)) {
+        col += mk_wcwidth(c);
+      }
+    }
+  }
+  /* Append anything we've missed. */
+  if (numcopied < in->textlen)
+    _owl_fmtext_append_fmtext(out, in, numcopied, in->textlen);
+}
+
 /* start with line 'aline' (where the first line is 0) and print
  * 'lines' number of lines into 'out'
  */
@@ -401,28 +438,19 @@ int owl_fmtext_truncate_lines(const owl_fmtext *in, int aline, int lines, owl_fm
     offset = ptr1 - in->textbuff;
     ptr2 = strchr(ptr1, '\n');
     if (!ptr2) {
-      _owl_fmtext_append_fmtext(out, in, offset, (in->textlen) - 1);
+      /* Copy to the end of the buffer. */
+      _owl_fmtext_append_fmtext(out, in, offset, in->textlen);
       return(-1);
     }
-    _owl_fmtext_append_fmtext(out, in, offset, (ptr2 - ptr1) + offset);
+    /* Copy up to, and including, the new line. */
+    _owl_fmtext_append_fmtext(out, in, offset, (ptr2 - ptr1) + offset + 1);
     ptr1 = ptr2 + 1;
   }
   return(0);
 }
 
-/* Truncate the message so that each line begins at column 'acol' and
- * ends at 'bcol' or sooner.  The first column is number 0.  The new
- * message is placed in 'out'.  The message is expected to end in a
- * new line for now.
- *
- * NOTE: This needs to be modified to deal with backing up if we find
- * a SPACING COMBINING MARK at the end of a line. If that happens, we
- * should back up to the last non-mark character and stop there.
- *
- * NOTE: If a line ends at bcol, we omit the newline. This is so printing
- * to ncurses works.
- */
-void owl_fmtext_truncate_cols(const owl_fmtext *in, int acol, int bcol, owl_fmtext *out)
+/* Implementation of owl_fmtext_truncate_cols. Does not support tabs in input. */
+void _owl_fmtext_truncate_cols_internal(const owl_fmtext *in, int acol, int bcol, owl_fmtext *out)
 {
   const char *ptr_s, *ptr_e, *ptr_c, *last;
   int col, st, padding, chwidth;
@@ -474,20 +502,19 @@ void owl_fmtext_truncate_cols(const owl_fmtext *in, int acol, int bcol, owl_fmte
       /* lead padding */
       owl_fmtext_append_spaces(out, padding);
       if (ptr_c == ptr_e) {
-	/* We made it to the newline. */
-	_owl_fmtext_append_fmtext(out, in, ptr_s - in->textbuff, ptr_c - in->textbuff);
+	/* We made it to the newline. Append up to, and including it. */
+	_owl_fmtext_append_fmtext(out, in, ptr_s - in->textbuff, ptr_c - in->textbuff + 1);
       }
       else if (chwidth > 1) {
         /* Last char is wide, truncate. */
-        _owl_fmtext_append_fmtext(out, in, ptr_s - in->textbuff, ptr_c - in->textbuff - 1);
+        _owl_fmtext_append_fmtext(out, in, ptr_s - in->textbuff, ptr_c - in->textbuff);
         owl_fmtext_append_normal(out, "\n");
       }
       else {
-        /* Last char fits perfectly, We skip to the next char and back
-         * up a byte to make sure we get it all.
-         */
+        /* Last char fits perfectly, We stop at the next char to make
+	 * sure we get it all. */
         ptr_c = g_utf8_next_char(ptr_c);
-        _owl_fmtext_append_fmtext(out, in, ptr_s - in->textbuff, ptr_c - in->textbuff - 1);
+        _owl_fmtext_append_fmtext(out, in, ptr_s - in->textbuff, ptr_c - in->textbuff);
       }
     }
     else {
@@ -497,20 +524,57 @@ void owl_fmtext_truncate_cols(const owl_fmtext *in, int acol, int bcol, owl_fmte
   }
 }
 
+/* Truncate the message so that each line begins at column 'acol' and
+ * ends at 'bcol' or sooner.  The first column is number 0.  The new
+ * message is placed in 'out'.  The message is expected to end in a
+ * new line for now.
+ *
+ * NOTE: This needs to be modified to deal with backing up if we find
+ * a SPACING COMBINING MARK at the end of a line. If that happens, we
+ * should back up to the last non-mark character and stop there.
+ *
+ * NOTE: If a line ends at bcol, we omit the newline. This is so printing
+ * to ncurses works.
+ */
+void owl_fmtext_truncate_cols(const owl_fmtext *in, int acol, int bcol, owl_fmtext *out)
+{
+  owl_fmtext notabs;
+
+  /* _owl_fmtext_truncate_cols_internal cannot handle tabs. */
+  if (strchr(in->textbuff, '\t')) {
+    owl_fmtext_init_null(&notabs);
+    owl_fmtext_expand_tabs(in, &notabs, 0);
+    _owl_fmtext_truncate_cols_internal(&notabs, acol, bcol, out);
+    owl_fmtext_cleanup(&notabs);
+  } else {
+    _owl_fmtext_truncate_cols_internal(in, acol, bcol, out);
+  }
+}
+
 /* Return the number of lines in 'f' */
 int owl_fmtext_num_lines(const owl_fmtext *f)
 {
   int lines, i;
+  char *lastbreak, *p;
 
-  if (f->textlen==0) return(0);
-  
   lines=0;
+  lastbreak = f->textbuff;
   for (i=0; i<f->textlen; i++) {
-    if (f->textbuff[i]=='\n') lines++;
+    if (f->textbuff[i]=='\n') {
+      lastbreak = f->textbuff + i;
+      lines++;
+    }
   }
 
-  /* if the last char wasn't a \n there's one more line */
-  if (f->textbuff[i-1]!='\n') lines++;
+  /* Check if there's a trailing line; formatting characters don't count. */
+  for (p = g_utf8_next_char(lastbreak);
+       p < f->textbuff + f->textlen;
+       p = g_utf8_next_char(p)) {
+    if (!owl_fmtext_is_format_char(g_utf8_get_char(p))) {
+      lines++;
+      break;
+    }
+  }
 
   return(lines);
 }
@@ -518,6 +582,11 @@ int owl_fmtext_num_lines(const owl_fmtext *f)
 const char *owl_fmtext_get_text(const owl_fmtext *f)
 {
   return(f->textbuff);
+}
+
+int owl_fmtext_num_bytes(const owl_fmtext *f)
+{
+  return(f->textlen);
 }
 
 /* set the charater at 'index' to be 'char'.  If index is out of

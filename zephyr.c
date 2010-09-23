@@ -147,8 +147,6 @@ void owl_zephyr_load_initial_subs(void) {
 
   if (ret_sd || ret_bd || ret_u) {
     owl_function_error("Error loading zephyr subscriptions");
-  } else if (ret_u!=-1) {
-    owl_global_add_userclue(&g, OWL_USERCLUE_CLASSES);
   }
 
   /* load login subscriptions */
@@ -264,6 +262,7 @@ int owl_zephyr_loadsubs(const char *filename, int error_on_nofile)
   subsfile = owl_zephyr_dotfile(".zephyr.subs", filename);
 
   if (stat(subsfile, &statbuff) != 0) {
+    owl_free(subsfile);
     if (error_on_nofile == 1)
       return -1;
     return 0;
@@ -353,11 +352,13 @@ int owl_zephyr_loadbarnowldefaultsubs(void)
 int owl_zephyr_loaddefaultsubs(void)
 {
 #ifdef HAVE_LIBZEPHYR
-  ZSubscription_t subs[10];
+  if (owl_global_is_havezephyr(&g)) {
+    ZSubscription_t subs[10];
     
-  if (ZSubscribeTo(subs,0,0) != ZERR_NONE) {
-    owl_function_error("Error subscribing to default zephyr notifications.");
-    return(-1);
+    if (ZSubscribeTo(subs,0,0) != ZERR_NONE) {
+      owl_function_error("Error subscribing to default zephyr notifications.");
+      return(-1);
+    }
   }
   return(0);
 #else
@@ -379,8 +380,10 @@ int owl_zephyr_loadloginsubs(const char *filename)
   subs = owl_malloc(numSubs * sizeof(ZSubscription_t));
   subsfile = owl_zephyr_dotfile(".anyone", filename);
 
-  if (stat(subsfile, &statbuff) == -1)
+  if (stat(subsfile, &statbuff) == -1) {
+    owl_free(subsfile);
     return 0;
+  }
 
   ZResetAuthentication();
   count = 0;
@@ -855,6 +858,7 @@ void owl_zephyr_zaway(const owl_message *m)
 #ifdef HAVE_LIBZEPHYR
   char *tmpbuff, *myuser, *to;
   owl_message *mout;
+  owl_zwrite *z;
   
   /* bail if it doesn't look like a message we should reply to.  Some
    * of this defined by the way zaway(1) works
@@ -890,10 +894,15 @@ void owl_zephyr_zaway(const owl_message *m)
   owl_free(myuser);
   owl_free(to);
 
+  z = owl_zwrite_new(tmpbuff);
+  owl_zwrite_set_message(z, owl_global_get_zaway_msg(&g));
+  owl_zwrite_set_zsig(z, "Automated reply:");
+
   /* display the message as an admin message in the receive window */
-  mout=owl_function_make_outgoing_zephyr(owl_global_get_zaway_msg(&g), tmpbuff, "Automated reply:");
+  mout=owl_function_make_outgoing_zephyr(z);
   owl_global_messagequeue_addmsg(&g, mout);
   owl_free(tmpbuff);
+  owl_zwrite_delete(z);
 #endif
 }
 

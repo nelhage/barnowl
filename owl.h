@@ -6,8 +6,10 @@
  *  file included with the distribution for more information.
  */
 
-#ifndef INC_OWL_H
-#define INC_OWL_H
+#ifndef INC_BARNOWL_OWL_H
+#define INC_BARNOWL_OWL_H
+
+#include "config.h"
 
 #ifdef HAVE_STDBOOL_H
 #include <stdbool.h>
@@ -34,7 +36,6 @@
 #include <termios.h>
 #include "libfaim/aim.h"
 #include <wchar.h>
-#include "config.h"
 #include "glib.h"
 #ifdef HAVE_LIBZEPHYR
 #include <zephyr/zephyr.h>
@@ -59,6 +60,8 @@ typedef void SV;
 typedef void AV;
 typedef void HV;
 #endif
+
+#include "window.h"
 
 #ifdef  GIT_VERSION
 #define stringify(x)       __stringify(x)
@@ -110,6 +113,8 @@ typedef void HV;
 #define OWL_COLOR_WHITE     7
 #define OWL_COLOR_DEFAULT   -1
 #define OWL_COLOR_INVALID   -2
+
+#define OWL_TAB_WIDTH 8
 
 #define OWL_EDITWIN_STYLE_MULTILINE 0
 #define OWL_EDITWIN_STYLE_ONELINE   1
@@ -169,16 +174,6 @@ typedef void HV;
 #define OWL_CTX_EDITLINE     0x1000
 #define OWL_CTX_EDITMULTI    0x2000
 #define OWL_CTX_EDITRESPONSE 0x4000
-
-#define OWL_USERCLUE_NONE       0
-#define OWL_USERCLUE_CLASSES    1
-#define OWL_USERCLUE_FOOBAR     2
-#define OWL_USERCLUE_BAZ        4
-
-#define OWL_WEBBROWSER_NONE     0
-#define OWL_WEBBROWSER_NETSCAPE 1
-#define OWL_WEBBROWSER_GALEON   2
-#define OWL_WEBBROWSER_OPERA    3
 
 #define OWL_VARIABLE_OTHER      0
 #define OWL_VARIABLE_INT        1
@@ -314,6 +309,7 @@ typedef struct _owl_context {
   int   mode;
   void *data;		/* determined by mode */
   char *keymap;
+  owl_window *cursor;
 } owl_context;
 
 typedef struct _owl_cmd {	/* command */
@@ -350,6 +346,7 @@ typedef struct _owl_cmd {	/* command */
 
 
 typedef struct _owl_zwrite {
+  char *cmd;
   char *zwriteline;
   char *class;
   char *inst;
@@ -390,19 +387,23 @@ typedef struct _owl_viewwin {
   int textlines;
   int topline;
   int rightshift;
-  int winlines, wincols;
-  WINDOW *curswin;
+  owl_window *window;
+  gulong sig_redraw_id;
   void (*onclose_hook) (struct _owl_viewwin *vwin, void *data);
   void *onclose_hook_data;
 } owl_viewwin;
   
 typedef struct _owl_popwin {
-  PANEL *borderpanel;
-  PANEL *poppanel;
-  int lines;
-  int cols;
+  owl_window *border;
+  owl_window *content;
   int active;
 } owl_popwin;
+  
+typedef struct _owl_msgwin {
+  char *msg;
+  owl_window *window;
+  gulong redraw_id;
+} owl_msgwin;
 
 typedef SV owl_messagelist;
 
@@ -438,6 +439,7 @@ typedef struct _owl_mainwin {
   int curtruncated;
   int lasttruncated;
   owl_view_iterator *lastdisplayed;
+  owl_window *window;
 } owl_mainwin;
 
 typedef struct _owl_history {
@@ -450,6 +452,15 @@ typedef struct _owl_history {
 
 typedef struct _owl_editwin owl_editwin;
 typedef struct _owl_editwin_excursion owl_editwin_excursion;
+
+typedef struct _owl_mainpanel {
+  owl_window *panel;
+  owl_window *typwin;
+  owl_window *sepwin;
+  owl_window *msgwin;
+  owl_window *recwin;
+  int recwinlines;
+} owl_mainpanel;
 
 typedef struct _owl_keybinding {
   int  *keys;			/* keypress stack */
@@ -464,7 +475,7 @@ typedef struct _owl_keymap {
   char     *name;		/* name of keymap */
   char     *desc;		/* description */
   owl_list  bindings;		/* key bindings */
-  const struct _owl_keymap *submap;	/* submap */
+  const struct _owl_keymap *parent;	/* parent */
   void (*default_fn)(owl_input j);	/* default action (takes a keypress) */
   void (*prealways_fn)(owl_input  j);	/* always called before a keypress is received */
   void (*postalways_fn)(owl_input  j);	/* always called after keypress is processed */
@@ -510,10 +521,6 @@ typedef struct _owl_colorpair_mgr {
   short **pairs;
 } owl_colorpair_mgr;
 
-typedef struct _owl_obarray {
-  owl_list strings;
-} owl_obarray;
-
 typedef struct _owl_io_dispatch {
   int fd;                                     /* FD to watch for dispatch. */
   int mode;
@@ -538,9 +545,12 @@ typedef struct _owl_popexec {
   const owl_io_dispatch *dispatch;
 } owl_popexec;
 
+typedef struct _OwlGlobalNotifier OwlGlobalNotifier;
+
 typedef struct _owl_global {
   owl_mainwin mw;
   owl_popwin pw;
+  owl_msgwin msgwin;
   owl_history cmdhist;		/* command history */
   owl_history msghist;		/* outgoing message history */
   owl_keyhandler kh;
@@ -559,12 +569,10 @@ typedef struct _owl_global {
   owl_style *current_style;
   owl_messagelist *msglist;
   WINDOW *input_pad;
-  PANEL *recpan, *seppan, *msgpan, *typpan;
-  int needrefresh;
+  owl_mainpanel mainpanel;
+  gulong typwin_erase_id;
   int rightshift;
   volatile sig_atomic_t resizepending;
-  int relayoutpending;
-  int recwinlines;
   char *thishost;
   char *homedir;
   char *confdir;
@@ -582,13 +590,11 @@ typedef struct _owl_global {
   time_t starttime;
   time_t lastinputtime;
   char *startupargs;
-  int userclue;
   int nextmsgid;
   int hascolors;
   int colorpairs;
   owl_colorpair_mgr cpmgr;
   pid_t newmsgproc_pid;
-  int malloced, freed;
   owl_regex search_re;
   aim_session_t aimsess;
   aim_conn_t bosconn;
@@ -599,7 +605,7 @@ typedef struct _owl_global {
   char *aim_screenname;     /* currently logged in AIM screen name */
   char *aim_screenname_for_filters;     /* currently logged in AIM screen name */
   owl_buddylist buddylist;  /* list of logged in AIM buddies */
-  owl_list messagequeue;    /* for queueing up aim and other messages */
+  GQueue *messagequeue;     /* for queueing up aim and other messages */
   owl_dict styledict;       /* global dictionary of available styles */
   char *response;           /* response to the last question asked */
   int havezephyr;
@@ -612,7 +618,6 @@ typedef struct _owl_global {
   GList *zaldlist;
   int pseudologin_notify;
   struct termios startup_tio;
-  owl_obarray obarray;
   owl_list io_dispatch_list;
   owl_list psa_list;
   GList *timerlist;
@@ -634,4 +639,4 @@ int ZGetSubscriptions(ZSubscription_t *, int *);
 int ZGetLocations(ZLocations_t *,int *);
 #endif
 
-#endif /* INC_OWL_H */
+#endif /* INC_BARNOWL_OWL_H */

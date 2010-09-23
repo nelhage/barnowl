@@ -21,6 +21,7 @@ int owl_filter_regtest(void);
 int owl_obarray_regtest(void);
 int owl_editwin_regtest(void);
 int owl_list_regtest(void);
+int owl_fmtext_regtest(void);
 
 extern void owl_perl_xs_init(pTHX);
 
@@ -104,9 +105,9 @@ int owl_regtest(void) {
   numfailures += owl_dict_regtest();
   numfailures += owl_variable_regtest();
   numfailures += owl_filter_regtest();
-  numfailures += owl_obarray_regtest();
   numfailures += owl_editwin_regtest();
   numfailures += owl_list_regtest();
+  numfailures += owl_fmtext_regtest();
   if (numfailures) {
       fprintf(stderr, "# *** WARNING: %d failures total\n", numfailures);
   }
@@ -368,42 +369,13 @@ int owl_filter_regtest(void) {
   return 0;
 }
 
-
-int owl_obarray_regtest(void) {
-  int numfailed = 0;
-  const char *p,*p2;
-
-  owl_obarray oa;
-  owl_obarray_init(&oa);
-
-  printf("# BEGIN testing owl_obarray\n");
-
-  p = owl_obarray_insert(&oa, "test");
-  FAIL_UNLESS("returned string is equal", p && !strcmp(p, "test"));
-  p2 = owl_obarray_insert(&oa, "test");
-  FAIL_UNLESS("returned string is equal", p2 && !strcmp(p2, "test"));
-  FAIL_UNLESS("returned the same string", p2 && p == p2);
-
-  p = owl_obarray_insert(&oa, "test2");
-  FAIL_UNLESS("returned string is equal", p && !strcmp(p, "test2"));
-  p2 = owl_obarray_find(&oa, "test2");
-  FAIL_UNLESS("returned the same string", p2 && !strcmp(p2, "test2"));
-
-  p = owl_obarray_find(&oa, "nothere");
-  FAIL_UNLESS("Didn't find a string that isn't there", p == NULL);
-
-  printf("# END testing owl_obarray (%d failures)\n", numfailed);
-
-  return numfailed;
-}
-
 int owl_editwin_regtest(void) {
   int numfailed = 0;
   const char *p;
+  owl_editwin *oe;
 
   printf("# BEGIN testing owl_editwin\n");
 
-  owl_editwin *oe;
   oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
 
   /* TODO: make the strings a little more lenient w.r.t trailing whitespace */
@@ -431,6 +403,28 @@ int owl_editwin_regtest(void) {
 							    "\n"
 							    "blah"));
 
+  owl_editwin_delete(oe); oe = NULL;
+
+  /* Test owl_editwin_move_to_beginning_of_line. */
+  oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
+  owl_editwin_insert_string(oe, "\n");
+  owl_editwin_insert_string(oe, "12345678\n");
+  owl_editwin_insert_string(oe, "\n");
+  owl_editwin_insert_string(oe, "abcdefg\n");
+  owl_editwin_move_to_top(oe);
+  FAIL_UNLESS("already at beginning of line",
+	      owl_editwin_move_to_beginning_of_line(oe) == 0);
+  owl_editwin_line_move(oe, 1);
+  owl_editwin_point_move(oe, 5);
+  FAIL_UNLESS("find beginning of line after empty first line",
+	      owl_editwin_move_to_beginning_of_line(oe) == -5);
+  owl_editwin_line_move(oe, 1);
+  FAIL_UNLESS("find beginning empty middle line",
+	      owl_editwin_move_to_beginning_of_line(oe) == 0);
+  owl_editwin_line_move(oe, 1);
+  owl_editwin_point_move(oe, 2);
+  FAIL_UNLESS("find beginning of line after empty middle line",
+	      owl_editwin_move_to_beginning_of_line(oe) == -2);
   owl_editwin_delete(oe); oe = NULL;
 
   printf("# END testing owl_editwin (%d failures)\n", numfailed);
@@ -483,3 +477,106 @@ int owl_list_regtest(void) {
   return numfailed;
 }
 
+
+int owl_fmtext_regtest(void) {
+  int numfailed = 0;
+  owl_fmtext fm1;
+  owl_fmtext fm2;
+  char *str;
+
+  printf("# BEGIN testing owl_fmtext\n");
+
+  owl_fmtext_init_null(&fm1);
+  owl_fmtext_init_null(&fm2);
+
+  /* Verify text gets correctly appended. */
+  owl_fmtext_append_normal(&fm1, "1234567898");
+  owl_fmtext_append_fmtext(&fm2, &fm1);
+  FAIL_UNLESS("string lengths correct",
+              owl_fmtext_num_bytes(&fm2) == strlen(owl_fmtext_get_text(&fm2)));
+
+  /* Test owl_fmtext_num_lines. */
+  owl_fmtext_clear(&fm1);
+  FAIL_UNLESS("empty line correct", owl_fmtext_num_lines(&fm1) == 0);
+  owl_fmtext_append_normal(&fm1, "12345\n67898");
+  FAIL_UNLESS("trailing chars correct", owl_fmtext_num_lines(&fm1) == 2);
+  owl_fmtext_append_normal(&fm1, "\n");
+  FAIL_UNLESS("trailing newline correct", owl_fmtext_num_lines(&fm1) == 2);
+  owl_fmtext_append_bold(&fm1, "");
+  FAIL_UNLESS("trailing attributes correct", owl_fmtext_num_lines(&fm1) == 2);
+
+  /* Test owl_fmtext_truncate_lines */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "0\n1\n2\n3\n4\n");
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_lines(&fm1, 1, 3, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("lines corrected truncated",
+	      str && !strcmp(str, "1\n2\n3\n"));
+  owl_free(str);
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_lines(&fm1, 1, 5, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("lines corrected truncated",
+	      str && !strcmp(str, "1\n2\n3\n4\n"));
+  owl_free(str);
+
+  /* Test owl_fmtext_truncate_cols. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123456789012345\n");
+  owl_fmtext_append_normal(&fm1, "123456789\n");
+  owl_fmtext_append_normal(&fm1, "1234567890\n");
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_cols(&fm1, 4, 9, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("columns correctly truncated",
+              str && !strcmp(str, "567890"
+                                  "56789\n"
+                                  "567890"));
+  owl_free(str);
+
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "12\t1234");
+  owl_fmtext_append_bold(&fm1, "56\n");
+  owl_fmtext_append_bold(&fm1, "12345678\t\n");
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_cols(&fm1, 4, 13, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("columns correctly truncated",
+              str && !strcmp(str, "    123456"
+                                  "5678      "));
+  owl_free(str);
+
+  /* Test owl_fmtext_expand_tabs. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "12\t1234");
+  owl_fmtext_append_bold(&fm1, "567\t1\n12345678\t1");
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_expand_tabs(&fm1, &fm2, 0);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("no tabs remaining", strchr(str, '\t') == NULL);
+  FAIL_UNLESS("tabs corrected expanded",
+              str && !strcmp(str, "12      1234567 1\n"
+                                  "12345678        1"));
+  owl_free(str);
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_expand_tabs(&fm1, &fm2, 1);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("no tabs remaining", strchr(str, '\t') == NULL);
+  FAIL_UNLESS("tabs corrected expanded",
+              str && !strcmp(str, "12     1234567 1\n"
+                                  "12345678       1"));
+  owl_free(str);
+
+  owl_fmtext_cleanup(&fm1);
+  owl_fmtext_cleanup(&fm2);
+
+  printf("# END testing owl_fmtext (%d failures)\n", numfailed);
+
+  return numfailed;
+}

@@ -34,19 +34,26 @@ AC_ARG_WITH([zephyr],
   [],
   [with_zephyr=check])
 
+AC_ARG_WITH([krb4],
+  AS_HELP_STRING([--with-krb4],
+                 [Build with kerberos IV]))
+
 AS_IF([test "x$with_zephyr" != xno],
-  [AC_MSG_CHECKING([for Kerberos IV])
-   AS_IF([krb5-config krb4 --libs >/dev/null 2>&1],
-     [AC_MSG_RESULT([yes])
-      AC_DEFINE([HAVE_KERBEROS_IV], [1], [Define if you have kerberos IV])
-      CFLAGS="${CFLAGS} `krb5-config krb4 --cflags`"
-      LIBS="${LIBS} `krb5-config krb4 --libs`"
-     ],
-     [AC_MSG_RESULT([no])
-      PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
-      CFLAGS="${CFLAGS} ${LIBCRYPTO_CFLAGS}"
-      LIBS="${LIBS} ${LIBCRYPTO_LIBS}"
-     ])
+  [AS_IF([test "x$with_krb4" != "xno"],
+   [AC_MSG_CHECKING([for Kerberos IV])
+    AS_IF([krb5-config krb4 --libs >/dev/null 2>&1],
+      [AC_MSG_RESULT([yes])
+       AC_DEFINE([HAVE_KERBEROS_IV], [1], [Define if you have kerberos IV])
+       CFLAGS="${CFLAGS} `krb5-config krb4 --cflags`"
+       LIBS="${LIBS} `krb5-config krb4 --libs`"
+      ],
+      [AC_MSG_RESULT([no])
+       AS_IF([test "x$with_krb4" = "xyes"],
+             [AC_MSG_ERROR([Kerberos IV requested but not found])])
+       PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
+       CFLAGS="${CFLAGS} ${LIBCRYPTO_CFLAGS}"
+       LIBS="${LIBS} ${LIBCRYPTO_LIBS}"
+     ])])
    AC_CHECK_LIB([zephyr], [ZGetSender],
    [LIBS="$LIBS -lzephyr"
     AC_DEFINE([HAVE_LIBZEPHYR], [1],
@@ -107,7 +114,7 @@ AX_PROG_PERL_MODULES([PAR],,
                      [AC_MSG_WARN([PAR.pm not found. Loadable modules will be disabled.])])
 
 dnl Add CFLAGS and LDFLAGS for glib-2.0
-PKG_CHECK_MODULES(GLIB,glib-2.0)
+PKG_CHECK_MODULES(GLIB,[glib-2.0 gobject-2.0])
 
 AC_MSG_NOTICE([Adding glib-2.0 CFLAGS ${GLIB_CFLAGS}])
 CFLAGS="${GLIB_CFLAGS} ${CFLAGS}"
@@ -129,6 +136,8 @@ AX_C_CHECK_FLAG([-Wno-pointer-sign],[],[],
 AM_CONDITIONAL([ENABLE_ZCRYPT], [test "$HAVE_DES_STRING_TO_KEY" && dnl
                                  test "$HAVE_DES_KEY_SCHED" && dnl
                                  test "$HAVE_DES_ECB_ENCRYPT"])
+
+CFLAGS="$CFLAGS -D_XOPEN_SOURCE"
 
 AC_SUBST([LIBFAIM_CFLAGS])
 

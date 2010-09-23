@@ -136,8 +136,8 @@ void owl_start_curses(void) {
 
   tcgetattr(0, &tio);
   tio.c_iflag &= ~(ISTRIP|IEXTEN);
-  tio.c_cc[VQUIT] = 0;
-  tio.c_cc[VSUSP] = 0;
+  tio.c_cc[VQUIT] = fpathconf(STDIN, _PC_VDISABLE);
+  tio.c_cc[VSUSP] = fpathconf(STDIN, _PC_VDISABLE);
   tcsetattr(0, TCSAFLUSH, &tio);
 
   /* screen init */
@@ -146,6 +146,12 @@ void owl_start_curses(void) {
   noecho();
 
   owl_start_color();
+}
+
+void owl_shutdown_curses(void) {
+  endwin();
+  /* restore terminal settings */
+  tcsetattr(0, TCSAFLUSH, owl_global_get_startup_tio(&g));
 }
 
 /*
@@ -238,6 +244,8 @@ int owl_process_message(owl_message *m) {
   owl_perlconfig_newmsg(m, NULL);
   /* log the message if we need to */
   owl_log_message(m);
+  /* redraw the sepbar; TODO: don't violate layering */
+  owl_global_sepbar_dirty(&g);
 
   return 1;
 }
@@ -270,8 +278,6 @@ int owl_process_messages(owl_ps_action *d, void *p)
     /* redisplay if necessary */
     /* this should be optimized to not run if the new messages won't be displayed */
     owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-    sepbar(NULL);
-    owl_global_set_needrefresh(&g);
   }
   return newmsgs;
 }
@@ -354,6 +360,18 @@ void sigint_handler(int sig, siginfo_t *si, void *data)
   owl_global_set_interrupted(&g);
 }
 
+static int owl_errsignal_pre_select_action(owl_ps_action *a, void *data)
+{
+  siginfo_t si;
+  int signum;
+  if ((signum = owl_global_get_errsignal_and_clear(&g, &si)) > 0) {
+    owl_function_error("Got unexpected signal: %d %s  (code: %d band: %ld  errno: %d)",
+        signum, signum==SIGPIPE?"SIGPIPE":"SIG????",
+        si.si_code, si.si_band, si.si_errno);
+  }
+  return 0;
+}
+
 void owl_register_signal_handlers(void) {
   struct sigaction sigact;
 
@@ -427,28 +445,9 @@ void stderr_redirect_handler(const owl_io_dispatch *d, void *data)
 static int owl_refresh_pre_select_action(owl_ps_action *a, void *data)
 {
   /* if a resize has been scheduled, deal with it */
-  owl_global_resize(&g, 0, 0);
-  /* also handle relayouts */
-  owl_global_relayout(&g);
-
+  owl_global_check_resize(&g);
   /* update the terminal if we need to */
-  if (owl_global_is_needrefresh(&g)) {
-    /* these are here in case a relayout changes the windows */
-    WINDOW *sepwin = owl_global_get_curs_sepwin(&g);
-    WINDOW *typwin = owl_global_get_curs_typwin(&g);
-
-    /* push all changed windows to screen */
-    update_panels();
-    /* leave the cursor in the appropriate window */
-    if (!owl_popwin_is_active(owl_global_get_popwin(&g))
-	&& owl_global_get_typwin(&g)) {
-      owl_function_set_cursor(typwin);
-    } else {
-      owl_function_set_cursor(sepwin);
-    }
-    doupdate();
-    owl_global_set_noneedrefresh(&g);
-  }
+  owl_window_redraw_scheduled();
   return 0;
 }
 
@@ -516,7 +515,7 @@ int main(int argc, char **argv, char **env)
   owl_function_debugmsg("startup: processing config file");
 
   owl_global_pop_context(&g);
-  owl_global_push_context(&g, OWL_CTX_READCONFIG, NULL, NULL);
+  owl_global_push_context(&g, OWL_CTX_READCONFIG, NULL, NULL, NULL);
 
   perlerr=owl_perlconfig_initperl(opts.configfile, &argc, &argv, &env);
   if (perlerr) {
@@ -562,7 +561,6 @@ int main(int argc, char **argv, char **env)
     "-----------------------------------------------------------------m-m---\n"
   );
   }
-  sepbar(NULL);
 
   /* process the startup file */
   owl_function_debugmsg("startup: processing startup file");
@@ -586,34 +584,18 @@ int main(int argc, char **argv, char **env)
   owl_function_debugmsg("startup: setting context interactive");
 
   owl_global_pop_context(&g);
-  owl_global_push_context(&g, OWL_CTX_READCONFIG|OWL_CTX_RECV, NULL, "recv");
-
-  /* If we ever deprecate the mainloop hook, remove this. */
-  owl_select_add_timer(0, 1, owl_perlconfig_mainloop, NULL, NULL);
+  owl_global_push_context(&g, OWL_CTX_INTERACTIVE|OWL_CTX_RECV, NULL, "recv", NULL);
 
   owl_select_add_pre_select_action(owl_refresh_pre_select_action, NULL, NULL);
   owl_select_add_pre_select_action(owl_process_messages, NULL, NULL);
   owl_select_add_pre_select_action(owl_view_iterator_delayed_delete, NULL, NULL);
+  owl_select_add_pre_select_action(owl_errsignal_pre_select_action, NULL, NULL);
 
   owl_function_debugmsg("startup: entering main loop");
-  /* main loop */
-  while (1) {
-    owl_perl_savetmps();
+  owl_select_run_loop();
 
-    /* select on FDs we know about. */
-    owl_select();
-
-    /* Log any error signals */
-    {
-      siginfo_t si;
-      int signum;
-      if ((signum = owl_global_get_errsignal_and_clear(&g, &si)) > 0) {
-	owl_function_error("Got unexpected signal: %d %s  (code: %d band: %ld  errno: %d)",
-			   signum, signum==SIGPIPE?"SIGPIPE":"SIG????",
-			   si.si_code, si.si_band, si.si_errno);
-      }
-    }
-
-    owl_perl_freetmps();
-  }
+  /* Shut down everything. */
+  owl_zephyr_shutdown();
+  owl_shutdown_curses();
+  return 0;
 }
