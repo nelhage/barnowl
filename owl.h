@@ -1,4 +1,4 @@
-/*  Copyright (c) 2006-2010 The BarnOwl Developers. All rights reserved.
+/*  Copyright (c) 2006-2011 The BarnOwl Developers. All rights reserved.
  *  Copyright (c) 2004 James Kretchmar. All rights reserved.
  *
  *  This program is free software. You can redistribute it and/or
@@ -10,6 +10,8 @@
 #define INC_BARNOWL_OWL_H
 
 #include "config.h"
+
+#include "compat/compat.h"
 
 #ifdef HAVE_STDBOOL_H
 #include <stdbool.h>
@@ -196,11 +198,16 @@ typedef void HV;
 
 #define OWL_CMD_ALIAS_SUMMARY_PREFIX "command alias to: "
 
-#define OWL_WEBZEPHYR_PRINCIPAL "daemon.webzephyr"
+#define OWL_WEBZEPHYR_PRINCIPAL "daemon/webzephyr.mit.edu"
 #define OWL_WEBZEPHYR_CLASS     "webzephyr"
 #define OWL_WEBZEPHYR_OPCODE    "webzephyr"
 
-#define OWL_REGEX_QUOTECHARS    "+*.?[]^\\${}()"
+#define OWL_ZEPHYR_NOSTRIP_HOST         "host/"
+#define OWL_ZEPHYR_NOSTRIP_RCMD         "rcmd."
+#define OWL_ZEPHYR_NOSTRIP_DAEMON5      "daemon/"
+#define OWL_ZEPHYR_NOSTRIP_DAEMON4      "daemon."
+
+#define OWL_REGEX_QUOTECHARS    "!+*.?[]^\\${}()"
 #define OWL_REGEX_QUOTEWITH     "\\"
 
 #if defined(HAVE_DES_STRING_TO_KEY) && defined(HAVE_DES_KEY_SCHED) && defined(HAVE_DES_ECB_ENCRYPT)
@@ -277,9 +284,7 @@ typedef struct _owl_input {
 } owl_input;
 
 typedef struct _owl_fmtext {
-  int textlen;
-  int bufflen;
-  char *textbuff;
+  GString *buff;
   char default_attrs;
   short default_fgcolor;
   short default_bgcolor;
@@ -520,6 +525,7 @@ typedef struct _owl_timer {
   void (*callback)(struct _owl_timer *, void *);
   void (*destroy)(struct _owl_timer *);
   void *data;
+  char *name;
 } owl_timer;
 
 typedef struct _owl_errqueue {
@@ -529,6 +535,7 @@ typedef struct _owl_errqueue {
 typedef struct _owl_colorpair_mgr {
   int next;
   short **pairs;
+  bool overflow;
 } owl_colorpair_mgr;
 
 typedef struct _owl_io_dispatch {
@@ -608,8 +615,6 @@ typedef struct _owl_global {
   owl_regex search_re;
   aim_session_t aimsess;
   aim_conn_t bosconn;
-  owl_timer aim_noop_timer;
-  owl_timer aim_ignorelogin_timer;
   int aim_loggedin;         /* true if currently logged into AIM */
   int aim_doprocessing;     /* true if we should process AIM events (like pending login) */
   char *aim_screenname;     /* currently logged in AIM screen name */
@@ -624,7 +629,6 @@ typedef struct _owl_global {
   volatile sig_atomic_t got_err_signal; /* 1 if we got an unexpected signal */
   volatile siginfo_t err_signal_info;
   owl_zbuddylist zbuddies;
-  owl_timer zephyr_buddycheck_timer;
   GList *zaldlist;
   int pseudologin_notify;
   struct termios startup_tio;
@@ -636,6 +640,7 @@ typedef struct _owl_global {
   volatile sig_atomic_t interrupted;
   int fmtext_seq;          /* Used to invalidate message fmtext caches */
   FILE *debug_file;
+  char *kill_buffer;
 } owl_global;
 
 /* globals */
@@ -643,8 +648,8 @@ extern owl_global g;
 
 #include "owl_prototypes.h"
 
-/* these are missing from the zephyr includes for some reason */
-#ifdef HAVE_LIBZEPHYR
+/* These were missing from the Zephyr includes before Zephyr 3. */
+#if defined HAVE_LIBZEPHYR && defined ZCONST
 int ZGetSubscriptions(ZSubscription_t *, int *);
 int ZGetLocations(ZLocations_t *,int *);
 #endif

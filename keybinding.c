@@ -26,9 +26,9 @@ int owl_keybinding_init(owl_keybinding *kb, const char *keyseq, const char *comm
     return(-1);
   }
 
-  if (command) kb->command = owl_strdup(command);
+  if (command) kb->command = g_strdup(command);
   kb->function_fn = function_fn;
-  if (desc) kb->desc = owl_strdup(desc);
+  if (desc) kb->desc = g_strdup(desc);
   else kb->desc = NULL;
   return(0);
 }
@@ -38,39 +38,39 @@ int owl_keybinding_make_keys(owl_keybinding *kb, const char *keyseq)
   char **ktokens;
   int    nktokens, i;
 
-  ktokens = atokenize(keyseq, " ", &nktokens);
-  if (!ktokens) return(-1);
-  if (nktokens > OWL_KEYMAP_MAXSTACK) {
-    atokenize_delete(ktokens, nktokens);
+  ktokens = g_strsplit_set(keyseq, " ", 0);
+  nktokens = g_strv_length(ktokens);
+  if (nktokens < 1 || nktokens > OWL_KEYMAP_MAXSTACK) {
+    g_strfreev(ktokens);
     return(-1);
   }
-  kb->keys = owl_malloc(nktokens*sizeof(int));
+  kb->keys = g_new(int, nktokens);
   for (i=0; i<nktokens; i++) {
     kb->keys[i] = owl_keypress_fromstring(ktokens[i]);
-    if (kb->keys[i] == ERR) { 
-      atokenize_delete(ktokens, nktokens);
-      owl_free(kb->keys);
+    if (kb->keys[i] == ERR) {
+      g_strfreev(ktokens);
+      g_free(kb->keys);
       return(-1);
     }
   }
   kb->len = nktokens;
-  atokenize_delete(ktokens, nktokens);
+  g_strfreev(ktokens);
   return(0);
 }
 
 /* Releases data associated with a keybinding */
 void owl_keybinding_cleanup(owl_keybinding *kb)
 {
-  if (kb->keys) owl_free(kb->keys);
-  if (kb->desc) owl_free(kb->desc);
-  if (kb->command) owl_free(kb->command);
+  if (kb->keys) g_free(kb->keys);
+  if (kb->desc) g_free(kb->desc);
+  if (kb->command) g_free(kb->command);
 }
 
 /* Releases data associated with a keybinding, and the kb itself */
 void owl_keybinding_delete(owl_keybinding *kb)
 {
   owl_keybinding_cleanup(kb);
-  owl_free(kb);
+  g_free(kb);
 }
 
 /* executes a keybinding */

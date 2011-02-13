@@ -56,8 +56,7 @@ static void owl_mainwin_redraw(owl_window *w, WINDOW *recwin, void *user_data)
   topmsg=owl_global_get_topmsg(&g);
   curmsg=owl_global_get_curmsg(&g);
   markedmsgid = owl_global_get_markedmsgid(&g);
-  v=owl_global_get_current_view(&g);
-  owl_fmtext_reset_colorpairs();
+  v = owl_global_get_current_view(&g);
 
   if(owl_view_iterator_is_at_end(curmsg)
      && !owl_view_iterator_is_at_start(curmsg)) {

@@ -1,4 +1,4 @@
-/*  Copyright (c) 2006-2010 The BarnOwl Developers. All rights reserved.
+/*  Copyright (c) 2006-2011 The BarnOwl Developers. All rights reserved.
  *  Copyright (c) 2004 James Kretchmar. All rights reserved.
  *
  *  This program is free software. You can redistribute it and/or
@@ -31,8 +31,6 @@
 #endif
 int stderr_replace(void);
 #endif
-
-#define STDIN 0
 
 owl_global g;
 
@@ -81,13 +79,13 @@ void owl_parse_options(int argc, char *argv[], owl_options *opts) {
       opts->load_initial_subs = 0;
       break;
     case 'c':
-      opts->configfile = owl_strdup(optarg);
+      opts->configfile = g_strdup(optarg);
       break;
     case 's':
-      opts->confdir = owl_strdup(optarg);
+      opts->confdir = g_strdup(optarg);
       break;
     case 't':
-      opts->tty = owl_strdup(optarg);
+      opts->tty = g_strdup(optarg);
       break;
     case 'D':
       opts->rm_debug = 1;
@@ -132,13 +130,15 @@ void owl_start_color(void) {
 void owl_start_curses(void) {
   struct termios tio;
   /* save initial terminal settings */
-  tcgetattr(0, owl_global_get_startup_tio(&g));
+  tcgetattr(STDIN_FILENO, owl_global_get_startup_tio(&g));
 
-  tcgetattr(0, &tio);
+  tcgetattr(STDIN_FILENO, &tio);
   tio.c_iflag &= ~(ISTRIP|IEXTEN);
-  tio.c_cc[VQUIT] = fpathconf(STDIN, _PC_VDISABLE);
-  tio.c_cc[VSUSP] = fpathconf(STDIN, _PC_VDISABLE);
-  tcsetattr(0, TCSAFLUSH, &tio);
+  tio.c_cc[VQUIT] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tio.c_cc[VSUSP] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tio.c_cc[VSTART] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tio.c_cc[VSTOP] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &tio);
 
   /* screen init */
   initscr();
@@ -151,7 +151,7 @@ void owl_start_curses(void) {
 void owl_shutdown_curses(void) {
   endwin();
   /* restore terminal settings */
-  tcsetattr(0, TCSAFLUSH, owl_global_get_startup_tio(&g));
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, owl_global_get_startup_tio(&g));
 }
 
 /*
@@ -426,36 +426,49 @@ void stderr_redirect_handler(const owl_io_dispatch *d, void *data)
   /*owl_function_debugmsg("stderr_redirect: navail = %d\n", navail);*/
   if (navail<=0) return;
   /* if (navail>256) { navail = 256; } */
-  buf = owl_malloc(navail+1);
+  buf = g_malloc(navail+1);
 
   bread = read(rfd, buf, navail);
   if (buf[navail-1] != '\0') {
     buf[navail] = '\0';
   }
 
-  err = owl_sprintf("[stderr]\n%s", buf);
-  owl_free(buf);
+  err = g_strdup_printf("[stderr]\n%s", buf);
+  g_free(buf);
 
   owl_function_log_err(err);
-  owl_free(err);
+  g_free(err);
 }
 
 #endif /* OWL_STDERR_REDIR */
 
 static int owl_refresh_pre_select_action(owl_ps_action *a, void *data)
 {
+  owl_colorpair_mgr *cpmgr;
+
   /* if a resize has been scheduled, deal with it */
   owl_global_check_resize(&g);
   /* update the terminal if we need to */
   owl_window_redraw_scheduled();
+  /* On colorpair shortage, reset and redraw /everything/. NOTE: if
+   * the current screen uses too many colorpairs, this draws
+   * everything twice. But this is unlikely; COLOR_PAIRS is 64 with
+   * 8+1 colors, and 256^2 with 256+1 colors. (+1 for default.) */
+  cpmgr = owl_global_get_colorpair_mgr(&g);
+  if (cpmgr->overflow) {
+    owl_function_debugmsg("colorpairs: color shortage; reset pairs and redraw. COLOR_PAIRS = %d", COLOR_PAIRS);
+    owl_fmtext_reset_colorpairs(cpmgr);
+    owl_function_full_redisplay();
+    owl_window_redraw_scheduled();
+  }
   return 0;
 }
 
 
 int main(int argc, char **argv, char **env)
 {
-  int argcsave;
-  const char *const *argvsave;
+  int argc_copy;
+  char **argv_copy;
   char *perlout, *perlerr;
   owl_style *s;
   const char *dir;
@@ -464,8 +477,8 @@ int main(int argc, char **argv, char **env)
   if (!GLIB_CHECK_VERSION (2, 12, 0))
     g_error ("GLib version 2.12.0 or above is needed.");
 
-  argcsave=argc;
-  argvsave=strs(argv);
+  argc_copy = argc;
+  argv_copy = g_strdupv(argv);
 
   setlocale(LC_ALL, "");
 
@@ -483,11 +496,12 @@ int main(int argc, char **argv, char **env)
   if (opts.debug) owl_global_set_debug_on(&g);
   if (opts.confdir) owl_global_set_confdir(&g, opts.confdir);
   owl_function_debugmsg("startup: first available debugging message");
-  owl_global_set_startupargs(&g, argcsave, argvsave);
+  owl_global_set_startupargs(&g, argc_copy, argv_copy);
+  g_strfreev(argv_copy);
   owl_global_set_haveaim(&g);
 
   /* register STDIN dispatch; throw away return, we won't need it */
-  owl_select_add_io_dispatch(STDIN, OWL_IO_READ, &owl_process_input, NULL, NULL);
+  owl_select_add_io_dispatch(STDIN_FILENO, OWL_IO_READ, &owl_process_input, NULL, NULL);
   owl_zephyr_initialize();
 
 #if OWL_STDERR_REDIR
@@ -508,7 +522,7 @@ int main(int argc, char **argv, char **env)
   } else {
     char *tty = owl_util_get_default_tty();
     owl_global_set_tty(&g, tty);
-    owl_free(tty);
+    g_free(tty);
   }
 
   /* Initialize perl */
@@ -544,15 +558,16 @@ int main(int argc, char **argv, char **env)
   /* execute the startup function in the configfile */
   owl_function_debugmsg("startup: executing perl startup, if applicable");
   perlout = owl_perlconfig_execute("BarnOwl::Hooks::_startup();");
-  if (perlout) owl_free(perlout);
+  if (perlout) g_free(perlout);
 
   /* welcome message */
   if(owl_messagelist_get_size(owl_global_get_msglist(&g)) == 0) {
   owl_function_debugmsg("startup: creating splash message");
   owl_function_adminmsg("",
     "-----------------------------------------------------------------------\n"
-    "Welcome to barnowl version " OWL_VERSION_STRING ".  Press 'h' for on-line help.\n"
+    "Welcome to barnowl version " OWL_VERSION_STRING ".\n"
     "To see a quick introduction, type ':show quickstart'.                  \n"
+    "Press 'h' for on-line help.                                            \n"
     "                                                                       \n"
     "BarnOwl is free software. Type ':show license' for more                \n"
     "information.                                                     ^ ^   \n"
@@ -565,14 +580,6 @@ int main(int argc, char **argv, char **env)
   /* process the startup file */
   owl_function_debugmsg("startup: processing startup file");
   owl_function_source(NULL);
-
-  /* Set the default style */
-  owl_function_debugmsg("startup: setting startup and default style");
-  if (0 != strcmp(owl_global_get_default_style(&g), "__unspecified__")) {
-    /* the style was set by the user: leave it alone */
-  } else {
-    owl_global_set_default_style(&g, "default");
-  }
 
   owl_function_debugmsg("startup: set style for the view: %s", owl_global_get_default_style(&g));
   s = owl_global_get_style_by_name(&g, owl_global_get_default_style(&g));

@@ -21,7 +21,7 @@ owl_popexec *owl_popexec_new(const char *command)
     return NULL;
   }
 
-  pe = owl_malloc(sizeof(owl_popexec));
+  pe = g_new(owl_popexec, 1);
   if (!pe) return NULL;
   pe->winactive=0;
   pe->pid=0;
@@ -125,7 +125,7 @@ void owl_popexec_inputhandler(const owl_io_dispatch *d, void *data)
 
   if (navail<=0) return;
   if (navail>1024) { navail = 1024; }
-  buf = owl_malloc(navail+1);
+  buf = g_new(char, navail+1);
   owl_function_debugmsg("about to read %d", navail);
   bread = read(d->fd, buf, navail);
   if (bread<0) {
@@ -139,7 +139,7 @@ void owl_popexec_inputhandler(const owl_io_dispatch *d, void *data)
   if (pe->winactive) {
     owl_viewwin_append_text(pe->vwin, buf);
   }
-  owl_free(buf);
+  g_free(buf);
   
 }
 
@@ -178,6 +178,6 @@ void owl_popexec_unref(owl_popexec *pe)
   pe->refcount--;
   if (pe->refcount<=0) {
     owl_function_debugmsg("doing free of %p", pe);
-    owl_free(pe);
+    g_free(pe);
   }
 }

@@ -10,12 +10,11 @@ owl_context *owl_context_new(int mode, void *data, const char *keymap, owl_windo
   owl_context *c;
   if (!(mode & OWL_CTX_MODE_BITS))
     mode |= OWL_CTX_INTERACTIVE;
-  c = owl_malloc(sizeof *c);
-  memset(c, 0, sizeof(*c));
+  c = g_new0(owl_context, 1);
   c->mode = mode;
   c->data = data;
   c->cursor = cursor ? g_object_ref(cursor) : NULL;
-  c->keymap = owl_strdup(keymap);
+  c->keymap = g_strdup(keymap);
   return c;
 }
 
@@ -69,8 +68,8 @@ void owl_context_delete(owl_context *ctx)
 {
   if (ctx->cursor)
     g_object_unref(ctx->cursor);
-  owl_free(ctx->keymap);
+  g_free(ctx->keymap);
   if (ctx->delete_cb)
     ctx->delete_cb(ctx);
-  owl_free(ctx);
+  g_free(ctx);
 }

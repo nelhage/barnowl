@@ -18,15 +18,16 @@ void owl_global_init(owl_global *g) {
   struct hostent *hent;
   char hostname[MAXHOSTNAMELEN];
   char *cd;
+  const char *homedir;
 
   g_type_init();
 
   gethostname(hostname, MAXHOSTNAMELEN);
   hent=gethostbyname(hostname);
   if (!hent) {
-    g->thishost=owl_strdup("localhost");
+    g->thishost=g_strdup("localhost");
   } else {
-    g->thishost=owl_strdup(hent->h_name);
+    g->thishost=g_strdup(hent->h_name);
   }
 
   g->lines=LINES;
@@ -79,14 +80,19 @@ void owl_global_init(owl_global *g) {
   g->nextmsgid=0;
 
   /* Fill in some variables which don't have constant defaults */
-  /* TODO: come back later and check passwd file first */
-  g->homedir=owl_strdup(getenv("HOME"));
+
+  /* glib's g_get_home_dir prefers passwd entries to $HOME, so we
+   * explicitly check getenv first. */
+  homedir = getenv("HOME");
+  if (!homedir)
+    homedir = g_get_home_dir();
+  g->homedir = g_strdup(homedir);
 
   g->confdir = NULL;
   g->startupfile = NULL;
-  cd = owl_sprintf("%s/%s", g->homedir, OWL_CONFIG_DIR);
+  cd = g_strdup_printf("%s/%s", g->homedir, OWL_CONFIG_DIR);
   owl_global_set_confdir(g, cd);
-  owl_free(cd);
+  g_free(cd);
 
   _owl_global_init_windows(g);
 
@@ -113,6 +119,7 @@ void owl_global_init(owl_global *g) {
   owl_list_create(&(g->psa_list));
   g->timerlist = NULL;
   g->interrupted = FALSE;
+  g->kill_buffer = NULL;
   g->fmtext_seq = 0;
 }
 
@@ -374,10 +381,10 @@ const char *owl_global_get_confdir(const owl_global *g) {
  * Setting this also sets startupfile to confdir/startup
  */
 void owl_global_set_confdir(owl_global *g, const char *cd) {
-  owl_free(g->confdir);
-  g->confdir = owl_strdup(cd);
-  owl_free(g->startupfile);
-  g->startupfile = owl_sprintf("%s/startup", cd);
+  g_free(g->confdir);
+  g->confdir = g_strdup(cd);
+  g_free(g->startupfile);
+  g->startupfile = g_strdup_printf("%s/startup", cd);
 }
 
 const char *owl_global_get_startupfile(const owl_global *g) {
@@ -522,22 +529,9 @@ void owl_global_set_curmsg_vert_offset(owl_global *g, int i) {
 
 /* startup args */
 
-void owl_global_set_startupargs(owl_global *g, int argc, const char *const *argv) {
-  int i, len;
-
-  if (g->startupargs) owl_free(g->startupargs);
-  
-  len=0;
-  for (i=0; i<argc; i++) {
-    len+=strlen(argv[i])+5;
-  }
-  g->startupargs=owl_malloc(len+5);
-
-  strcpy(g->startupargs, "");
-  for (i=0; i<argc; i++) {
-    sprintf(g->startupargs + strlen(g->startupargs), "%s ", argv[i]);
-  }
-  g->startupargs[strlen(g->startupargs)-1]='\0';
+void owl_global_set_startupargs(owl_global *g, int argc, char **argv) {
+  if (g->startupargs) g_free(g->startupargs);
+  g->startupargs = g_strjoinv(" ", argv);
 }
 
 const char *owl_global_get_startupargs(const owl_global *g) {
@@ -572,11 +566,11 @@ static void owl_global_delete_filter_ent(void *data)
   owl_global_filter_ent *e = data;
   e->g->filterlist = g_list_remove(e->g->filterlist, e->f);
   owl_filter_delete(e->f);
-  owl_free(e);
+  g_free(e);
 }
 
 void owl_global_add_filter(owl_global *g, owl_filter *f) {
-  owl_global_filter_ent *e = owl_malloc(sizeof *e);
+  owl_global_filter_ent *e = g_new(owl_global_filter_ent, 1);
   e->g = g;
   e->f = f;
 
@@ -729,15 +723,13 @@ const char *owl_global_get_aim_screenname_for_filters(const owl_global *g)
 void owl_global_set_aimloggedin(owl_global *g, const char *screenname)
 {
   char *sn_escaped;
-  const char *quote;
   g->aim_loggedin=1;
-  if (g->aim_screenname) owl_free(g->aim_screenname);
-  if (g->aim_screenname_for_filters) owl_free(g->aim_screenname_for_filters);
-  g->aim_screenname=owl_strdup(screenname);
+  if (g->aim_screenname) g_free(g->aim_screenname);
+  if (g->aim_screenname_for_filters) g_free(g->aim_screenname_for_filters);
+  g->aim_screenname=g_strdup(screenname);
   sn_escaped = owl_text_quote(screenname, OWL_REGEX_QUOTECHARS, OWL_REGEX_QUOTEWITH);
-  quote = owl_getquoting(sn_escaped);
-  g->aim_screenname_for_filters=owl_sprintf("%s%s%s", quote, sn_escaped, quote);
-  owl_free(sn_escaped);
+  g->aim_screenname_for_filters = owl_arg_quote(sn_escaped);
+  g_free(sn_escaped);
 }
 
 void owl_global_set_aimnologgedin(owl_global *g)
@@ -1015,15 +1007,23 @@ FILE *owl_global_get_debug_file_handle(owl_global *g) {
 
     g->debug_file = NULL;
 
-    path = owl_sprintf("%s.%d", filename, getpid());
+    path = g_strdup_printf("%s.%d", filename, getpid());
     fd = open(path, O_CREAT|O_WRONLY|O_EXCL, 0600);
-    owl_free(path);
+    g_free(path);
 
     if (fd >= 0)
       g->debug_file = fdopen(fd, "a");
 
-    owl_free(open_file);
-    open_file = owl_strdup(filename);
+    g_free(open_file);
+    open_file = g_strdup(filename);
   }
   return g->debug_file;
+}
+
+char *owl_global_get_kill_buffer(owl_global *g) {
+  return g->kill_buffer;
+}
+
+void owl_global_set_kill_buffer(owl_global *g,char *kill) {
+  g->kill_buffer = kill;
 }

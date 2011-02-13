@@ -44,6 +44,16 @@ static void _owl_window_unrealize(owl_window *w);
 static owl_window *cursor_owner;
 static owl_window *default_cursor;
 
+/* clang gets upset about the glib argument chopping hack because it manages to
+ * inline owl_window_children_foreach. user_data should be a pointer to a
+ * FuncOneArg. */
+typedef void (*FuncOneArg)(void *);
+static void first_arg_only(gpointer data, gpointer user_data)
+{
+  FuncOneArg *func = user_data;
+  (*func)(data);
+}
+
 G_DEFINE_TYPE (OwlWindow, owl_window, G_TYPE_OBJECT)
 
 static void owl_window_class_init (OwlWindowClass *klass)
@@ -286,8 +296,9 @@ void owl_window_show(owl_window *w)
 
 void owl_window_show_all(owl_window *w)
 {
+  FuncOneArg ptr = (FuncOneArg)owl_window_show;
   owl_window_show(w);
-  owl_window_children_foreach(w, (GFunc)owl_window_show, 0);
+  owl_window_children_foreach(w, first_arg_only, &ptr);
 }
 
 void owl_window_hide(owl_window *w)
@@ -336,6 +347,7 @@ static void _owl_window_realize_later(owl_window *w)
 
 static void _owl_window_realize(owl_window *w)
 {
+  FuncOneArg ptr = (FuncOneArg)_owl_window_realize_later;
   /* check if we can create a window */
   if (owl_window_is_realized(w) || !_owl_window_should_realize(w))
     return;
@@ -347,15 +359,16 @@ static void _owl_window_realize(owl_window *w)
   /* schedule a repaint */
   owl_window_dirty(w);
   /* map the children */
-  owl_window_children_foreach(w, (GFunc)_owl_window_realize_later, 0);
+  owl_window_children_foreach(w, first_arg_only, &ptr);
 }
 
 static void _owl_window_unrealize(owl_window *w)
 {
+  FuncOneArg ptr = (FuncOneArg)_owl_window_unrealize;
   if (w->win == NULL)
     return;
   /* unmap all the children */
-  owl_window_children_foreach(w, (GFunc)_owl_window_unrealize, 0);
+  owl_window_children_foreach(w, first_arg_only, &ptr);
   _owl_window_destroy_curses(w);
   w->dirty = w->dirty_subtree = 0;
   /* subwins leave a mess in the parent; dirty it */
@@ -409,7 +422,8 @@ void owl_window_dirty(owl_window *w)
 
 void owl_window_dirty_children(owl_window *w)
 {
-  owl_window_children_foreach(w, (GFunc)owl_window_dirty, 0);
+  FuncOneArg ptr = (FuncOneArg)owl_window_dirty;
+  owl_window_children_foreach(w, first_arg_only, &ptr);
 }
 
 static void _owl_window_redraw(owl_window *w)
@@ -430,10 +444,11 @@ static void _owl_window_redraw(owl_window *w)
 
 static void _owl_window_redraw_subtree(owl_window *w)
 {
+  FuncOneArg ptr = (FuncOneArg)_owl_window_redraw_subtree;
   if (!w->dirty_subtree)
     return;
   _owl_window_redraw(w);
-  owl_window_children_foreach(w, (GFunc)_owl_window_redraw_subtree, 0);
+  owl_window_children_foreach(w, first_arg_only, &ptr);
   w->dirty_subtree = 0;
 }
 

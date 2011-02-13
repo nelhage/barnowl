@@ -18,9 +18,9 @@ owl_filter *owl_filter_new(const char *name, int argc, const char *const *argv)
 {
   owl_filter *f;
 
-  f = owl_malloc(sizeof(owl_filter));
+  f = g_new(owl_filter, 1);
 
-  f->name=owl_strdup(name);
+  f->name=g_strdup(name);
   f->fgcolor=OWL_COLOR_DEFAULT;
   f->bgcolor=OWL_COLOR_DEFAULT;
 
@@ -69,7 +69,7 @@ static owl_filterelement * owl_filter_parse_primitive_expression(int argc, const
 
   if(!argc) return NULL;
 
-  fe = owl_malloc(sizeof(owl_filterelement));
+  fe = g_new(owl_filterelement, 1);
   owl_filterelement_create(fe);
 
   if(!strcasecmp(argv[i], "(")) {
@@ -114,7 +114,7 @@ static owl_filterelement * owl_filter_parse_primitive_expression(int argc, const
   return fe;
 err:
   owl_filterelement_cleanup(fe);
-  owl_free(fe);
+  g_free(fe);
   return NULL;
 }
 
@@ -132,7 +132,7 @@ owl_filterelement * owl_filter_parse_expression(int argc, const char *const *arg
        strcasecmp(argv[i], "or")) break;
     op2 = owl_filter_parse_primitive_expression(argc-i-1, argv+i+1, &skip);
     if(!op2) goto err;
-    tmp = owl_malloc(sizeof(owl_filterelement));
+    tmp = g_new(owl_filterelement, 1);
     if(!strcasecmp(argv[i], "and")) {
       owl_filterelement_create_and(tmp, op1, op2);
     } else {
@@ -152,7 +152,7 @@ owl_filterelement * owl_filter_parse_expression(int argc, const char *const *arg
 err:
   if(op1) {
     owl_filterelement_cleanup(op1);
-    owl_free(op1);
+    g_free(op1);
   }
   return NULL;
 }
@@ -244,8 +244,8 @@ int owl_filter_equiv(const owl_filter *a, const owl_filter *b)
   ret = ret && !strcmp(owl_filter_get_name(a),
                        owl_filter_get_name(b));
 
-  owl_free(buffa);
-  owl_free(buffb);
+  g_free(buffa);
+  g_free(buffb);
 
   return ret;
 }
@@ -262,9 +262,9 @@ void owl_filter_delete(owl_filter *f)
     return;
   if (f->root) {
     owl_filterelement_cleanup(f->root);
-    owl_free(f->root);
+    g_free(f->root);
   }
   if (f->name)
-    owl_free(f->name);
-  owl_free(f);
+    g_free(f->name);
+  g_free(f);
 }

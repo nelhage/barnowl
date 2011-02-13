@@ -22,7 +22,7 @@ owl_message *owl_message_new(void) {
 void owl_message_lock(owl_message *m)
 {
   char *rv = owl_perlconfig_message_call_method(m, "lock_message", 0, NULL);
-  if(rv) owl_free(rv);
+  if(rv) g_free(rv);
 }
 
 void owl_message_init(owl_message *m)
@@ -46,8 +46,8 @@ void owl_message_set_attribute(owl_message *m, const char *attrname, const char 
   char *utf8val = owl_validate_or_convert(attrvalue);
   const char *argv[] = {attrname, utf8val, NULL};
   char *rv = owl_perlconfig_message_call_method(m, "__set_attribute", 2, argv);
-  if(rv) owl_free(rv);
-  owl_free(utf8val);
+  if(rv) g_free(rv);
+  g_free(utf8val);
 }
 
 /* return the value associated with the named attribute, or NULL if
@@ -82,7 +82,7 @@ char *owl_message_get_meta(const owl_message *m, const char *attr)
     return "";
   }
   str = SvPV_nolen(sv_2mortal(newSVpv(perlrv, 0)));
-  owl_free(perlrv);
+  g_free(perlrv);
   return str;
 }
 
@@ -285,14 +285,14 @@ int owl_message_is_private(const owl_message *m)
 void owl_message_set_time(owl_message *m, time_t tm)
 {
   char * timestr;
-  timestr = owl_sprintf("%d", tm);
+  timestr = g_strdup_printf("%d", (unsigned int)tm);
   owl_message_set_attribute(m, "unix_time", timestr);
-  owl_free(timestr);
-  timestr = owl_strdup(ctime(&tm));
+  g_free(timestr);
+  timestr = g_strdup(ctime(&tm));
   /* Chop the newline */
   timestr[strlen(timestr)-1] = 0;
   owl_message_set_attribute(m, "time", timestr);
-  owl_free(timestr);
+  g_free(timestr);
 }
 
 time_t owl_message_get_time(owl_message *m)
@@ -315,7 +315,7 @@ char *owl_message_get_shorttimestr(owl_message *m)
   char *out;
 
   tmstruct=localtime(&time);
-  out=owl_sprintf("%2.2i:%2.2i", tmstruct->tm_hour, tmstruct->tm_min);
+  out=g_strdup_printf("%2.2i:%2.2i", tmstruct->tm_hour, tmstruct->tm_min);
   if (out) return(out);
   return("??:??");
 }
@@ -346,17 +346,17 @@ void owl_message_set_type(owl_message *m, const char* type)
   char *blessas;
   HV *stash;
   owl_message_set_attribute(m, "type", type);
-  tmp = owl_strdup(type);
+  tmp = g_strdup(type);
   tmp[0] = toupper(tmp[0]);
-  blessas = owl_sprintf("BarnOwl::Message::%s", tmp);
+  blessas = g_strdup_printf("BarnOwl::Message::%s", tmp);
   stash = gv_stashpv(blessas, 0);
   if(!stash) {
     owl_function_error("No such class: %s for message type %s", blessas, owl_message_get_type(m));
     stash = gv_stashpv("BarnOwl::Message", 1);
   }
   sv_bless(m, stash);
-  owl_free(tmp);
-  owl_free(blessas);
+  g_free(tmp);
+  g_free(blessas);
 }
 
 int owl_message_is_type(const owl_message *m, const char *type) {
@@ -460,7 +460,7 @@ int owl_message_is_delete(const owl_message *m)
   char *str = owl_perlconfig_message_call_method(m, "is_deleted", 0, NULL);
   if(!str) return 0;
   int deleted = atoi(str);
-  owl_free(str);
+  g_free(str);
   return deleted;
 }
 
@@ -514,7 +514,7 @@ char *owl_message_get_cc(const owl_message *m)
   if (strncasecmp(cur, "cc:", 3)) return(NULL);
   cur+=3;
   while (*cur && *cur==' ') cur++;
-  out = owl_strdup(cur);
+  out = g_strdup(cur);
   end = strchr(out, '\n');
   if (end) end[0] = '\0';
   return(out);
@@ -537,14 +537,14 @@ GList *owl_message_get_cc_without_recipient(const owl_message *m)
   while (user != NULL) {
     shortuser = short_zuser(user);
     if (strcasecmp(shortuser, recip) != 0) {
-      out = g_list_prepend(out, owl_strdup(user));
+      out = g_list_prepend(out, g_strdup(user));
     }
-    owl_free(shortuser);
+    g_free(shortuser);
     user = strtok(NULL, " ");
   }
 
-  owl_free(recip);
-  owl_free(cc);
+  g_free(recip);
+  g_free(cc);
 
   return(out);
 }
@@ -659,15 +659,15 @@ void owl_message_save_ccs(owl_message *m) {
     while(cc != NULL) {
       /* Collapse any identical entries */
       while (cc->next && strcasecmp(cc->data, cc->next->data) == 0) {
-        owl_free(cc->data);
+        g_free(cc->data);
         cc = g_list_delete_link(cc, cc);
       }
 
       tmp = short_zuser(cc->data);
       g_string_append(recips, tmp);
 
-      owl_free(tmp);
-      owl_free(cc->data);
+      g_free(tmp);
+      g_free(cc->data);
       cc = g_list_delete_link(cc, cc);
 
       if (cc)
@@ -720,11 +720,11 @@ void owl_message_create_from_znotice(owl_message *m, const ZNotice_t *n)
     if (!strcasecmp(n->z_opcode, "user_login") || !strcasecmp(n->z_opcode, "user_logout")) {
       tmp=owl_zephyr_get_field(n, 1);
       owl_message_set_attribute(m, "loginhost", tmp);
-      owl_free(tmp);
+      g_free(tmp);
 
       tmp=owl_zephyr_get_field(n, 3);
       owl_message_set_attribute(m, "logintty", tmp);
-      owl_free(tmp);
+      g_free(tmp);
     }
 
     if (!strcasecmp(n->z_opcode, "user_login")) {
@@ -767,11 +767,11 @@ void owl_message_create_from_znotice(owl_message *m, const ZNotice_t *n)
   if (owl_global_is_newlinestrip(&g)) {
     tmp2=owl_util_stripnewlines(tmp);
     owl_message_set_body(m, tmp2);
-    owl_free(tmp2);
+    g_free(tmp2);
   } else {
     owl_message_set_body(m, tmp);
   }
-  owl_free(tmp);
+  g_free(tmp);
 
   /* Save the fields */
   AV *av_zfields;
@@ -781,7 +781,7 @@ void owl_message_create_from_znotice(owl_message *m, const ZNotice_t *n)
   for (i=0; i<j; i++) {
     ptr=owl_zephyr_get_field_as_utf8(n, i+1);
     av_push(av_zfields, owl_new_sv(ptr));
-    owl_free(ptr);
+    g_free(ptr);
   }
   (void)hv_store((HV*)SvRV(m), "fields", strlen("fields"), newRV_noinc((SV*)av_zfields), 0);
 
@@ -802,10 +802,10 @@ void owl_message_create_from_znotice(owl_message *m, const ZNotice_t *n)
     int status;
     char *zcrypt;
 
-    zcrypt = owl_sprintf("%s/zcrypt", owl_get_bindir());
+    zcrypt = g_strdup_printf("%s/zcrypt", owl_get_bindir());
 
     rv = call_filter(zcrypt, argv, owl_message_get_body(m), &out, &status);
-    owl_free(zcrypt);
+    g_free(zcrypt);
 
     if(!rv && !status) {
       int len = strlen(out);
@@ -813,9 +813,9 @@ void owl_message_create_from_znotice(owl_message *m, const ZNotice_t *n)
         out[len - 8] = 0;
       }
       owl_message_set_body(m, out);
-      owl_free(out);
+      g_free(out);
     } else if(out) {
-      owl_free(out);
+      g_free(out);
     }
   }
 
@@ -843,7 +843,7 @@ char *owl_message_get_field(const owl_message *m, int n)
   fields = (AV*)SvRV(ref_fields);
   f = av_fetch(fields, n, 0);
   if(!f) return "";
-  return owl_strdup(SvPV_nolen(*f));
+  return g_strdup(SvPV_nolen(*f));
 }
 #else
 void owl_message_create_from_znotice(owl_message *m, const void *n)
@@ -891,7 +891,7 @@ void owl_message_create_pseudo_zlogin(owl_message *m, int direction, const char 
   /* save the hostname */
   owl_function_debugmsg("create_pseudo_login: host is %s", host ? host : "");
   owl_message_set_hostname(m, host ? host : "");
-  owl_free(longuser);
+  g_free(longuser);
 
   owl_message_lock(m);
 }
@@ -900,6 +900,7 @@ void owl_message_create_from_zwrite(owl_message *m, const owl_zwrite *z, const c
 {
   int ret;
   char hostbuff[5000];
+  char *replyline;
   
   owl_message_init(m);
 
@@ -913,13 +914,17 @@ void owl_message_create_from_zwrite(owl_message *m, const owl_zwrite *z, const c
     char *longzuser = long_zuser(owl_zwrite_get_recip_n(z, 0));
     owl_message_set_recipient(m,
 			      longzuser); /* only gets the first user, must fix */
-    owl_free(longzuser);
+    g_free(longzuser);
   }
   owl_message_set_opcode(m, owl_zwrite_get_opcode(z));
   owl_message_set_realm(m, owl_zwrite_get_realm(z)); /* also a hack, but not here */
-  if(z->zwriteline) {
-    owl_message_set_zwriteline(m, z->zwriteline);
-  }
+
+  /* Although not strictly the zwriteline, anyone using the unsantized version
+   * of it probably has a bug. */
+  replyline = owl_zwrite_get_replyline(z);
+  owl_message_set_zwriteline(m, replyline);
+  g_free(replyline);
+
   owl_message_set_body(m, body);
   owl_message_set_zsig(m, owl_zwrite_get_zsig(z));
   
@@ -1069,6 +1074,6 @@ void owl_message_attributes_tofmtext(const owl_message *m, owl_fmtext *fm) {
 
   owl_fmtext_append_normal(fm, text);
 
-  owl_free(text);
+  g_free(text);
 }
 

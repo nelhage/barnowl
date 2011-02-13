@@ -2,7 +2,6 @@
 #include "owl.h"
 
 #define BOTTOM_OFFSET 1
-#define EMPTY_INDICATOR "~"
 
 static void owl_viewwin_redraw_content(owl_window *w, WINDOW *curswin, void *user_data);
 static void owl_viewwin_redraw_status(owl_window *w, WINDOW *curswin, void *user_data);
@@ -14,8 +13,7 @@ static void owl_viewwin_set_window(owl_viewwin *v, owl_window *w);
  */
 owl_viewwin *owl_viewwin_new_text(owl_window *win, const char *text)
 {
-  owl_viewwin *v = owl_malloc(sizeof(owl_viewwin));
-  memset(v, 0, sizeof(*v));
+  owl_viewwin *v = g_new0(owl_viewwin, 1);
   owl_fmtext_init_null(&(v->fmtext));
   if (text) {
     owl_fmtext_append_normal(&(v->fmtext), text);
@@ -38,15 +36,14 @@ owl_viewwin *owl_viewwin_new_text(owl_window *win, const char *text)
 owl_viewwin *owl_viewwin_new_fmtext(owl_window *win, const owl_fmtext *fmtext)
 {
   char *text;
-  owl_viewwin *v = owl_malloc(sizeof(owl_viewwin));
-  memset(v, 0, sizeof(*v));
+  owl_viewwin *v = g_new0(owl_viewwin, 1);
 
   owl_fmtext_copy(&(v->fmtext), fmtext);
   text = owl_fmtext_print_plain(fmtext);
   if (text[0] != '\0' && text[strlen(text) - 1] != '\n') {
       owl_fmtext_append_normal(&(v->fmtext), "\n");
   }
-  owl_free(text);
+  g_free(text);
   v->textlines=owl_fmtext_num_lines(&(v->fmtext));
   v->topline=0;
   v->rightshift=0;
@@ -96,7 +93,6 @@ static void owl_viewwin_redraw_content(owl_window *w, WINDOW *curswin, void *use
   owl_fmtext fm1, fm2;
   owl_viewwin *v = user_data;
   int winlines, wincols;
-  int y;
 
   owl_window_get_position(w, &winlines, &wincols, 0, 0);
 
@@ -110,14 +106,6 @@ static void owl_viewwin_redraw_content(owl_window *w, WINDOW *curswin, void *use
   owl_fmtext_truncate_cols(&fm1, v->rightshift, wincols-1+v->rightshift, &fm2);
 
   owl_fmtext_curs_waddstr(&fm2, curswin);
-
-  /* Fill remaining lines with tildes. */
-  y = v->textlines - v->topline;
-  wmove(curswin, y, 0);
-  for (; y < winlines; y++) {
-    waddstr(curswin, EMPTY_INDICATOR);
-    waddstr(curswin, "\n");
-  }
 
   owl_fmtext_cleanup(&fm1);
   owl_fmtext_cleanup(&fm2);
@@ -172,11 +160,17 @@ typedef struct _owl_viewwin_search_data { /*noproto*/
 
 static void owl_viewwin_callback_search(owl_editwin *e)
 {
+  int consider_current = false;
   const char *line = owl_editwin_get_text(e);
   owl_viewwin_search_data *data = owl_editwin_get_cbdata(e);
-  owl_function_set_search(line);
+
+  /* Given an empty string, just continue the current search. */
+  if (line && *line) {
+    owl_function_set_search(line);
+    consider_current = true;
+  }
   if (!owl_viewwin_search(data->v, owl_global_get_search_re(&g),
-			  true, data->direction))
+                          consider_current, data->direction))
     owl_function_error("No matches");
 }
 
@@ -200,7 +194,7 @@ char *owl_viewwin_command_start_search(owl_viewwin *v, int argc, const char *con
   owl_editwin_set_locktext(tw, (direction == OWL_DIRECTION_DOWNWARDS) ? "/" : "?");
   owl_editwin_insert_string(tw, buffstart);
 
-  data = owl_malloc(sizeof(owl_viewwin_search_data));
+  data = g_new(owl_viewwin_search_data, 1);
   data->v = v;
   data->direction = direction;
 
@@ -209,7 +203,9 @@ char *owl_viewwin_command_start_search(owl_viewwin *v, int argc, const char *con
   ctx->cbdata = v;
   owl_global_push_context_obj(&g, ctx);
   owl_editwin_set_callback(tw, owl_viewwin_callback_search);
-  owl_editwin_set_cbdata(tw, data, owl_free);
+  owl_editwin_set_cbdata(tw, data, g_free);
+  /* We aren't saving tw, so release the reference we were given. */
+  owl_editwin_unref(tw);
   return NULL;
 }
 
@@ -229,6 +225,8 @@ char *owl_viewwin_start_command(owl_viewwin *v, int argc, const char *const *arg
                             owl_viewwin_deactivate_editcontext, v);
   owl_global_push_context_obj(&g, ctx);
   owl_editwin_set_callback(tw, owl_callback_command);
+  /* We aren't saving tw, so release the reference we were given. */
+  owl_editwin_unref(tw);
 
   return NULL;
 }
@@ -425,5 +423,5 @@ void owl_viewwin_delete(owl_viewwin *v)
   g_object_unref(v->content);
   g_object_unref(v->status);
   owl_fmtext_cleanup(&(v->fmtext));
-  owl_free(v);
+  g_free(v);
 }

@@ -3,7 +3,7 @@
 void owl_buddy_create(owl_buddy *b, int proto, const char *name)
 {
   b->proto=proto;
-  b->name=owl_strdup(name);
+  b->name=g_strdup(name);
   b->idlesince=0;
 }
 
@@ -65,11 +65,11 @@ int owl_buddy_get_idle_time(const owl_buddy *b)
 
 void owl_buddy_cleanup(owl_buddy *b)
 {
-  if (b->name) owl_free(b->name);
+  if (b->name) g_free(b->name);
 }
 
 void owl_buddy_delete(owl_buddy *b)
 {
   owl_buddy_cleanup(b);
-  owl_free(b);
+  g_free(b);
 }

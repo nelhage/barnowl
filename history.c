@@ -52,6 +52,7 @@ void owl_history_store(owl_history *h, const char *line)
 
   /* if partial is set, remove the first entry first */
   if (h->partial) {
+    g_free(owl_list_get_element(&(h->hist), 0));
     owl_list_remove_element(&(h->hist), 0);
   }
 
@@ -62,12 +63,12 @@ void owl_history_store(owl_history *h, const char *line)
 
   /* if we've reached the max history size, pop off the last element */
   if (size>OWL_HISTORYSIZE) {
-    owl_free(owl_list_get_element(&(h->hist), size-1));
+    g_free(owl_list_get_element(&(h->hist), size-1));
     owl_list_remove_element(&(h->hist), size-1);
   }
 
   /* add the new line */
-  owl_list_prepend_element(&(h->hist), owl_strdup(line));
+  owl_list_prepend_element(&(h->hist), g_strdup(line));
 }
 
 void owl_history_set_partial(owl_history *h)

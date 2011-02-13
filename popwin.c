@@ -2,8 +2,7 @@
 
 owl_popwin *owl_popwin_new(void)
 {
-  owl_popwin *pw = owl_malloc(sizeof(owl_popwin));
-  memset(pw, 0, sizeof(*pw));
+  owl_popwin *pw = g_new0(owl_popwin, 1);
 
   pw->border = owl_window_new(NULL);
   pw->content = owl_window_new(pw->border);
@@ -38,9 +37,9 @@ void owl_popwin_size_border(owl_window *parent, void *user_data)
 
   owl_window_get_position(parent, &glines, &gcols, 0, 0);
 
-  lines = owl_util_min(glines,24)*3/4 + owl_util_max(glines-24,0)/2;
+  lines = MIN(glines, 24) * 3/4 + MAX(glines - 24, 0) / 2;
   startline = (glines-lines)/2;
-  cols = owl_util_min(gcols,90)*15/16 + owl_util_max(gcols-90,0)/2;
+  cols = MIN(gcols, 90) * 15 / 16 + MAX(gcols - 90, 0) / 2;
   startcol = (gcols-cols)/2;
 
   owl_window_set_position(border, lines, cols, startline, startcol);
@@ -92,7 +91,7 @@ void owl_popwin_delete(owl_popwin *pw)
   g_object_unref(pw->border);
   g_object_unref(pw->content);
 
-  owl_free(pw);
+  g_free(pw);
 }
 
 int owl_popwin_is_active(const owl_popwin *pw)

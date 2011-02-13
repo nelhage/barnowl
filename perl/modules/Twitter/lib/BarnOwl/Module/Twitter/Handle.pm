@@ -30,8 +30,23 @@ use BarnOwl;
 use BarnOwl::Message::Twitter;
 use POSIX qw(asctime);
 
-use constant BARNOWL_CONSUMER_KEY    => "9Py27vCQl6uB5V7ijmp31A";
-use constant BARNOWL_CONSUMER_SECRET => "GLhheSim8P5cVuk9FTM99KTEgWLW0LGl7gf54QWfg";
+use LWP::UserAgent;
+use URI;
+use JSON;
+
+use constant CONSUMER_KEY_URI => 'http://barnowl.mit.edu/twitter-keys';
+our $oauth_keys;
+
+sub fetch_keys {
+    my $ua = LWP::UserAgent->new;
+    $ua->timeout(5);
+    my $response = $ua->get(CONSUMER_KEY_URI);
+    if ($response->is_success) {
+        $oauth_keys = eval { from_json($response->decoded_content) };
+    } else {
+        warn "[Twitter] Unable to download OAuth keys: $response->status_line\n";
+    }
+}
 
 sub fail {
     my $self = shift;
@@ -57,6 +72,12 @@ sub new {
         $cfg->{show_mentions} = $val;
     }
 
+
+    if (!defined($oauth_keys)) {
+        fetch_keys();
+    }
+    my $keys = $oauth_keys->{URI->new($cfg->{service})->canonical} || {};
+
     $cfg = {
         account_nickname => '',
         default          => 0,
@@ -64,8 +85,8 @@ sub new {
         poll_for_dms     => 1,
         publish_tweets   => 0,
         show_mentions    => 1,
-        oauth_key        => BARNOWL_CONSUMER_KEY,
-        oauth_secret     => BARNOWL_CONSUMER_SECRET,
+        oauth_key        => $keys->{oauth_key},
+        oauth_secret     => $keys->{oauth_secret},
         %$cfg,
        };
 
@@ -149,8 +170,20 @@ sub sleep {
     my $weak = $self;
     weaken($weak);
 
+    # Stop any existing timers.
+    if (defined $self->{timer}) {
+        $self->{timer}->stop;
+        $self->{timer} = undef;
+    }
+    if (defined $self->{direct_timer}) {
+        $self->{direct_timer}->stop;
+        $self->{direct_timer} = undef;
+    }
+
+    my $nickname = $self->{cfg}->{account_nickname};
     if($self->{cfg}->{poll_for_tweets}) {
         $self->{timer} = BarnOwl::Timer->new({
+            name     => "Twitter ($nickname) poll_for_tweets",
             after    => $delay,
             interval => 90,
             cb       => sub { $weak->poll_twitter if $weak }
@@ -159,6 +192,7 @@ sub sleep {
 
     if($self->{cfg}->{poll_for_dms}) {
         $self->{direct_timer} = BarnOwl::Timer->new({
+            name     => "Twitter ($nickname) poll_for_dms",
             after    => $delay,
             interval => 180,
             cb       => sub { $weak->poll_direct if $weak }

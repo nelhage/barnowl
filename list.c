@@ -7,7 +7,7 @@
 int owl_list_create(owl_list *l)
 {
   l->size=0;
-  l->list=owl_malloc(INITSIZE*sizeof(void *));
+  l->list=g_new(void *, INITSIZE);
   l->avail=INITSIZE;
   if (l->list==NULL) return(-1);
   return(0);
@@ -25,7 +25,7 @@ static void owl_list_grow(owl_list *l, int n)
 
   if ((l->size+n) > l->avail) {
     int avail = MAX(l->avail * GROWBY, l->size + n);
-    ptr = owl_realloc(l->list, avail * sizeof(void *));
+    ptr = g_renew(void *, l->list, avail);
     if (ptr==NULL) abort();
     l->list=ptr;
     l->avail = avail;
@@ -85,5 +85,5 @@ void owl_list_cleanup(owl_list *l, void (*elefree)(void *))
       (elefree)(l->list[i]);
     }
   }
-  owl_free(l->list);
+  g_free(l->list);
 }

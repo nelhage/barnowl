@@ -47,20 +47,20 @@ command(cmd, ...)
 		if (items == 1) {
 			rv = owl_function_command(cmd);
 		} else {
-			argv = owl_malloc((items + 1) * sizeof *argv);
+			argv = g_new(const char *, items + 1);
 			argv[0] = cmd;
 			for(i = 1; i < items; i++) {
 				argv[i] = SvPV_nolen(ST(i));
 			}
 			rv = owl_function_command_argv(argv, items);
-			owl_free(argv);
+			g_free(argv);
 		}
 		RETVAL = rv;
 	}
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		if (rv) owl_free(rv);
+		if (rv) g_free(rv);
 
 SV *
 getcurmsg()
@@ -117,7 +117,7 @@ ztext_stylestrip(ztext)
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		if (rv) owl_free(rv);
+		if (rv) g_free(rv);
 
 const utf8 *
 zephyr_smartstrip_user(in)
@@ -132,7 +132,7 @@ zephyr_smartstrip_user(in)
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		owl_free(rv);
+		g_free(rv);
 
 const utf8 *
 zephyr_getsubs()
@@ -144,7 +144,7 @@ zephyr_getsubs()
     OUTPUT:
 		RETVAL
     CLEANUP:
-		if (rv) owl_free(rv);
+		if (rv) g_free(rv);
 
 void
 queue_message(msg)
@@ -292,7 +292,7 @@ create_style(name, object)
 		owl_style *s;
      CODE:
 	{
-		s = owl_malloc(sizeof(owl_style));
+		s = g_new(owl_style, 1);
 		owl_style_create_perl(s, name, newSVsv(object));
 		owl_global_add_style(&g, s);
 	}
@@ -351,7 +351,7 @@ wordwrap(in, cols)
 		RETVAL
 	CLEANUP:
 		if (rv)
-			owl_free(rv);
+			g_free(rv);
 
 void
 remove_io_dispatch(fd)
@@ -369,7 +369,7 @@ all_filters()
 		owl_dict_get_keys(&g.filters, &fl);
 		RETVAL = owl_new_av(&fl, (SV*(*)(const void*))owl_new_sv);
 		sv_2mortal((SV*)RETVAL);
-		owl_list_cleanup(&fl, owl_free);
+		owl_list_cleanup(&fl, g_free);
 	}
 	OUTPUT:
 		RETVAL
@@ -388,7 +388,7 @@ all_styles()
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		owl_list_cleanup(&l, owl_free);
+		owl_list_cleanup(&l, g_free);
 
 
 AV*
@@ -405,7 +405,7 @@ all_variables()
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		owl_list_cleanup(&l, owl_free);
+		owl_list_cleanup(&l, g_free);
 
 
 AV*
@@ -415,7 +415,6 @@ all_keymaps()
 		const owl_keyhandler *kh;
 	CODE:
 	{
-		owl_list_create(&l);
 		kh = owl_global_get_keyhandler(&g);
 		owl_keyhandler_get_keymap_names(kh, &l);
 		RETVAL = owl_new_av(&l, (SV*(*)(const void*))owl_new_sv);
@@ -424,7 +423,7 @@ all_keymaps()
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		owl_list_cleanup(&l, owl_free);
+		owl_list_cleanup(&l, g_free);
 
 void
 redisplay()
@@ -552,21 +551,23 @@ add_io_dispatch(fd, mode, cb)
 	owl_select_add_perl_io_dispatch(fd, mode, newSVsv(cb));
 
 IV
-add_timer(after, interval, cb)
+add_timer(after, interval, cb, name = NULL)
 	int after
 	int interval
 	SV *cb
+	const char *name
 	PREINIT:
 		SV *ref;
 		owl_timer *t;
 	CODE:
 		ref = sv_rvweaken(newSVsv(cb));
-		t = owl_select_add_timer(after,
+		t = owl_select_add_timer(name,
+					 after,
 					 interval,
 					 owl_perlconfig_perl_timer,
 					 owl_perlconfig_perl_timer_destroy,
 					 ref);
-	owl_function_debugmsg("Created timer %p", t);
+		owl_function_debugmsg("Created timer %s: %p", t->name ? t->name : "(unnamed)", t);
 	RETVAL = (IV)t;
 	OUTPUT:
 		RETVAL
@@ -578,8 +579,8 @@ remove_timer(timer)
 		owl_timer *t;
 	CODE:
 		t = (owl_timer*)timer;
-		owl_function_debugmsg("Freeing timer %p", t);
-				owl_select_remove_timer(t);
+		owl_function_debugmsg("Freeing timer %s: %p", t->name ? t->name : "(unnamed)", t);
+		owl_select_remove_timer(t);
 
 MODULE = BarnOwl		PACKAGE = BarnOwl::Editwin
 
@@ -645,7 +646,7 @@ get_region()
 	OUTPUT:
 		RETVAL
 	CLEANUP:
-		owl_free(region);
+		g_free(region);
 
 SV *
 save_excursion(sub)

@@ -43,13 +43,13 @@ const owl_cmd *owl_cmddict_find(const owl_cmddict *d, const char *name) {
 
 void owl_cmddict_namelist_cleanup(owl_list *l)
 {
-  owl_list_cleanup(l, owl_free);
+  owl_list_cleanup(l, g_free);
 }
 
 /* creates a new command alias */
 int owl_cmddict_add_alias(owl_cmddict *cd, const char *alias_from, const char *alias_to) {
   owl_cmd *cmd;
-  cmd = owl_malloc(sizeof(owl_cmd));
+  cmd = g_new(owl_cmd, 1);
   owl_cmd_create_alias(cmd, alias_from, alias_to);
   owl_perlconfig_new_command(cmd->name);
   owl_dict_insert_element(cd, cmd->name, cmd, (void (*)(void *))owl_cmd_delete);
@@ -57,9 +57,9 @@ int owl_cmddict_add_alias(owl_cmddict *cd, const char *alias_from, const char *a
 }
 
 int owl_cmddict_add_cmd(owl_cmddict *cd, const owl_cmd * cmd) {
-  owl_cmd * newcmd = owl_malloc(sizeof(owl_cmd));
+  owl_cmd * newcmd = g_new(owl_cmd, 1);
   if(owl_cmd_create_from_template(newcmd, cmd) < 0) {
-    owl_free(newcmd);
+    g_free(newcmd);
     return -1;
   }
   owl_perlconfig_new_command(cmd->name);
@@ -87,48 +87,42 @@ char *owl_cmddict_execute(const owl_cmddict *cd, const owl_context *ctx, const c
   char *tmpbuff;
   char *retval = NULL;
 
-  tmpbuff=owl_strdup(cmdbuff);
+  tmpbuff=g_strdup(cmdbuff);
   argv=owl_parseline(tmpbuff, &argc);
   if (argc < 0) {
-    owl_free(tmpbuff);
+    g_free(tmpbuff);
     owl_function_makemsg("Unbalanced quotes");
     return NULL;
   } 
   
   if (argc < 1) {
     owl_parse_delete(argv, argc);
-    owl_free(tmpbuff);
+    g_free(tmpbuff);
     return NULL;
   }
 
   retval = _owl_cmddict_execute(cd, ctx, strs(argv), argc, cmdbuff);
 
   owl_parse_delete(argv, argc);
-  owl_free(tmpbuff);
+  g_free(tmpbuff);
   return retval;
 }
 
 char *owl_cmddict_execute_argv(const owl_cmddict *cd, const owl_context *ctx, const char *const *argv, int argc) {
-  char *buff, *ptr;
-  int len = 0, i;
-  char *retval = NULL;
+  GString *buf = g_string_new("");
+  int i;
+  char *retval;
 
+  /* We weren't given a command line, so fabricate a valid one. */
   for(i = 0; i < argc; i++) {
-    len += strlen(argv[i]) + 1;
+    if (i != 0)
+      g_string_append_c(buf, ' ');
+    owl_string_append_quoted_arg(buf, argv[i]);
   }
 
-  ptr = buff = owl_malloc(len);
+  retval = _owl_cmddict_execute(cd, ctx, argv, argc, buf->str);
 
-  for(i = 0; i < argc; i++) {
-    strcpy(ptr, argv[i]);
-    ptr += strlen(argv[i]);
-    *(ptr++) = ' ';
-  }
-  *(ptr - 1) = 0;
-
-  retval = _owl_cmddict_execute(cd, ctx, argv, argc, buff);
-
-  owl_free(buff);
+  g_string_free(buf, true);
   return retval;
 }
 
@@ -140,36 +134,36 @@ char *owl_cmddict_execute_argv(const owl_cmddict *cd, const owl_context *ctx, co
 int owl_cmd_create_from_template(owl_cmd *cmd, const owl_cmd *templ) {
   *cmd = *templ;
   if (!templ->name) return(-1);
-  cmd->name = owl_strdup(templ->name);
-  if (templ->summary)     cmd->summary     = owl_strdup(templ->summary);
-  if (templ->usage)       cmd->usage       = owl_strdup(templ->usage);
-  if (templ->description) cmd->description = owl_strdup(templ->description);
-  if (templ->cmd_aliased_to) cmd->cmd_aliased_to = owl_strdup(templ->cmd_aliased_to);
+  cmd->name = g_strdup(templ->name);
+  if (templ->summary)     cmd->summary     = g_strdup(templ->summary);
+  if (templ->usage)       cmd->usage       = g_strdup(templ->usage);
+  if (templ->description) cmd->description = g_strdup(templ->description);
+  if (templ->cmd_aliased_to) cmd->cmd_aliased_to = g_strdup(templ->cmd_aliased_to);
   return(0);
 }
 
 int owl_cmd_create_alias(owl_cmd *cmd, const char *name, const char *aliased_to) {
   memset(cmd, 0, sizeof(owl_cmd));
-  cmd->name = owl_strdup(name);
-  cmd->cmd_aliased_to = owl_strdup(aliased_to);
-  cmd->summary = owl_sprintf("%s%s", OWL_CMD_ALIAS_SUMMARY_PREFIX, aliased_to);
+  cmd->name = g_strdup(name);
+  cmd->cmd_aliased_to = g_strdup(aliased_to);
+  cmd->summary = g_strdup_printf("%s%s", OWL_CMD_ALIAS_SUMMARY_PREFIX, aliased_to);
   return(0);
 }
 
 void owl_cmd_cleanup(owl_cmd *cmd)
 {
-  if (cmd->name) owl_free(cmd->name);
-  if (cmd->summary) owl_free(cmd->summary);
-  if (cmd->usage) owl_free(cmd->usage);
-  if (cmd->description) owl_free(cmd->description);
-  if (cmd->cmd_aliased_to) owl_free(cmd->cmd_aliased_to);
+  if (cmd->name) g_free(cmd->name);
+  if (cmd->summary) g_free(cmd->summary);
+  if (cmd->usage) g_free(cmd->usage);
+  if (cmd->description) g_free(cmd->description);
+  if (cmd->cmd_aliased_to) g_free(cmd->cmd_aliased_to);
   if (cmd->cmd_perl) owl_perlconfig_cmd_cleanup(cmd);
 }
 
 void owl_cmd_delete(owl_cmd *cmd)
 {
   owl_cmd_cleanup(cmd);
-  owl_free(cmd);
+  g_free(cmd);
 }
 
 int owl_cmd_is_context_valid(const owl_cmd *cmd, const owl_context *ctx) { 
@@ -191,9 +185,9 @@ char *owl_cmd_execute(const owl_cmd *cmd, const owl_cmddict *cd, const owl_conte
       owl_function_makemsg("Alias loop detected for '%s'.", cmdbuff);
     } else {
       cmdbuffargs = skiptokens(cmdbuff, 1);
-      newcmd = owl_sprintf("%s %s", cmd->cmd_aliased_to, cmdbuffargs);
+      newcmd = g_strdup_printf("%s %s", cmd->cmd_aliased_to, cmdbuffargs);
       rv = owl_function_command(newcmd);
-      owl_free(newcmd);
+      g_free(newcmd);
     } 
     alias_recurse_depth--;
     return rv;
@@ -252,7 +246,7 @@ const char *owl_cmd_get_summary(const owl_cmd *cmd) {
 /* returns a summary line describing this keymap.  the caller must free. */
 char *owl_cmd_describe(const owl_cmd *cmd) {
   if (!cmd || !cmd->name || !cmd->summary) return NULL;
-  return owl_sprintf("%-25s - %s", cmd->name, cmd->summary);
+  return g_strdup_printf("%-25s - %s", cmd->name, cmd->summary);
 }
 
 
@@ -281,12 +275,11 @@ void owl_cmd_get_help(const owl_cmddict *d, const char *name, owl_fmtext *fm) {
 
   if (cmd->usage && *cmd->usage) {
     s = cmd->usage;
-    indent = owl_malloc(strlen(s)+(owl_text_num_lines(s)+3)*OWL_TAB+1);
-    owl_text_indent(indent, s, OWL_TAB);
+    indent = owl_text_indent(s, OWL_TAB);
     owl_fmtext_append_bold(fm, "\nSYNOPSIS\n");
     owl_fmtext_append_normal(fm, indent);
     owl_fmtext_append_normal(fm, "\n");
-    owl_free(indent);
+    g_free(indent);
   } else {
     owl_fmtext_append_bold(fm, "\nSYNOPSIS\n");
     owl_fmtext_append_normal(fm, OWL_TABSTR);
@@ -296,12 +289,11 @@ void owl_cmd_get_help(const owl_cmddict *d, const char *name, owl_fmtext *fm) {
 
   if (cmd->description && *cmd->description) {
     s = cmd->description;
-    indent = owl_malloc(strlen(s)+(owl_text_num_lines(s)+3)*OWL_TAB+1);
-    owl_text_indent(indent, s, OWL_TAB);
+    indent = owl_text_indent(s, OWL_TAB);
     owl_fmtext_append_bold(fm, "\nDESCRIPTION\n");
     owl_fmtext_append_normal(fm, indent);
     owl_fmtext_append_normal(fm, "\n");
-    owl_free(indent);
+    g_free(indent);
   }
 
   owl_fmtext_append_normal(fm, "\n\n");  
