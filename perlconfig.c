@@ -562,3 +562,32 @@ void owl_perlconfig_invalidate_filter(owl_filter *f)
   FREETMPS;
   LEAVE;
 }
+
+char *owl_perlconfig_do_sepbar(void)
+{
+  char *out;
+  SV *rv;
+
+  dSP;
+  ENTER;
+  SAVETMPS;
+
+  PUSHMARK(SP);
+
+  call_pv("BarnOwl::Hooks::_do_sepbar", G_EVAL|G_SCALAR);
+
+  SPAGAIN;
+
+  rv = POPs;
+
+  if (rv) {
+    out = g_strdup(SvPV_nolen(rv));
+  } else {
+    out = NULL;
+  }
+
+  FREETMPS;
+  LEAVE;
+
+  return out;
+}

@@ -259,6 +259,14 @@ sub _new_command {
     }
 }
 
+sub _do_sepbar {
+    my $append = BarnOwl::getvar("appendtosepbar");
+    if ($append) {
+        return " $append ";
+    }
+    return "";
+}
+
 sub contains {
     my $list = shift;
     my $what = shift;
