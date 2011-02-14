@@ -334,7 +334,7 @@ void owl_perlconfig_new_command(const char *name)
   XPUSHs(sv_2mortal(owl_new_sv(name)));
   PUTBACK;
 
-  call_pv("BarnOwl::Hooks::_new_command", G_SCALAR|G_VOID|G_EVAL);
+  call_pv("BarnOwl::Hooks::_new_command", G_VOID|G_EVAL);
 
   SPAGAIN;
 
@@ -537,7 +537,7 @@ void owl_perlconfig_do_dispatch(owl_io_dispatch *d)
   PUSHMARK(SP);
   PUTBACK;
   
-  call_sv(cb, G_DISCARD|G_KEEPERR|G_EVAL);
+  call_sv(cb, G_DISCARD|G_EVAL);
 
   if(SvTRUE(ERRSV)) {
     owl_function_error("%s", SvPV_nolen(ERRSV));
@@ -557,7 +557,7 @@ void owl_perlconfig_invalidate_filter(owl_filter *f)
   XPUSHs(sv_2mortal(newSVpv(owl_filter_get_name(f), 0)));
   PUTBACK;
 
-  call_pv("BarnOwl::Hooks::_invalidate_filter", G_DISCARD|G_KEEPERR|G_EVAL);
+  call_pv("BarnOwl::Hooks::_invalidate_filter", G_DISCARD|G_EVAL);
 
   FREETMPS;
   LEAVE;
