@@ -50,14 +50,14 @@ static GList *all_views = NULL;
 
 owl_view* owl_view_new(const char *filtname)
 {
-  owl_view *v = owl_malloc(sizeof *v);
+  owl_view *v = g_new(owl_view, 1);
   ov_range *init = ov_range_new(-1, -1, NULL, NULL);
   v->ranges = init;
-  v->messages = owl_malloc(4096);
+  v->messages = g_malloc(4096);
   memset(v->messages, 0, 4096);
   v->next_cached_id  = 4096 * 8;
   v->saved_id = 0;
-  v->filter_name = owl_strdup(filtname);
+  v->filter_name = g_strdup(filtname);
   all_views = g_list_prepend(all_views, v);
   return v;
 }
@@ -126,14 +126,14 @@ void owl_view_delete(owl_view *v)
 {
   all_views = g_list_remove(all_views, v);
   ov_range *r = v->ranges;
-  owl_free(v->messages);
-  owl_free(v->filter_name);
+  g_free(v->messages);
+  g_free(v->filter_name);
   while(r) {
     ov_range *next = r->next;
-    owl_free(r);
+    g_free(r);
     r = next;
   }
-  owl_free(v);
+  g_free(v);
 }
 
 /********************************************************************
@@ -161,7 +161,7 @@ void owl_view_delete(owl_view *v)
 
 owl_view_iterator * owl_view_iterator_new(void)
 {
-  owl_view_iterator *it = owl_malloc(sizeof *it);
+  owl_view_iterator *it = g_new(owl_view_iterator, 1);
   it->delete_next = NULL;
   owl_view_iterator_invalidate(it);
   return it;
@@ -246,7 +246,7 @@ int owl_view_iterator_cmp(owl_view_iterator *it1, owl_view_iterator *it2)
 
 void owl_view_iterator_delete(owl_view_iterator *it)
 {
-  owl_free(it);
+  g_free(it);
 }
 
 owl_view_iterator* owl_view_iterator_delete_later(owl_view_iterator *it)
@@ -270,7 +270,7 @@ int owl_view_iterator_delayed_delete(owl_ps_action *d, void *p) {
 /* ov_range */
 static ov_range *ov_range_new(int bk, int fwd, ov_range *prev, ov_range *next)
 {
-  ov_range *r = owl_malloc(sizeof *r);
+  ov_range *r = g_new(ov_range, 1);
   r->next_bk  = bk;
   r->next_fwd = fwd;
   r->prev     = prev;
@@ -300,7 +300,7 @@ static int ov_range_expand_fwd(ov_range *v, int id)
     if (v->next) {
       v->next->prev = v;
     }
-    owl_free(tmp);
+    g_free(tmp);
   }
   return merged;
 }
@@ -321,7 +321,7 @@ static int ov_range_expand_bk(ov_range *v, int id)
     if (v->prev) {
       v->prev->next = v;
     }
-    owl_free(tmp);
+    g_free(tmp);
   }
   return merged;
 }
@@ -363,7 +363,7 @@ static void ov_mark_message(owl_view *v, int id, bool mark)
       new_bytes *= 2;
     new_bytes = ROUNDUP(new_bytes, sizeof (unsigned long));
 
-    v->messages = owl_realloc(v->messages, new_bytes);
+    v->messages = g_realloc(v->messages, new_bytes);
     v->next_cached_id = new_bytes * 8;
     memset((unsigned char*)v->messages + old_bytes, 0, new_bytes - old_bytes);
   }

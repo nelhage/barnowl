@@ -1,4 +1,4 @@
-/*  Copyright (c) 2006-2010 The BarnOwl Developers. All rights reserved.
+/*  Copyright (c) 2006-2011 The BarnOwl Developers. All rights reserved.
  *  Copyright (c) 2004 James Kretchmar. All rights reserved.
  *
  *  This program is free software. You can redistribute it and/or
@@ -31,8 +31,6 @@
 #endif
 int stderr_replace(void);
 #endif
-
-#define STDIN 0
 
 owl_global g;
 
@@ -81,13 +79,13 @@ void owl_parse_options(int argc, char *argv[], owl_options *opts) {
       opts->load_initial_subs = 0;
       break;
     case 'c':
-      opts->configfile = owl_strdup(optarg);
+      opts->configfile = g_strdup(optarg);
       break;
     case 's':
-      opts->confdir = owl_strdup(optarg);
+      opts->confdir = g_strdup(optarg);
       break;
     case 't':
-      opts->tty = owl_strdup(optarg);
+      opts->tty = g_strdup(optarg);
       break;
     case 'D':
       opts->rm_debug = 1;
@@ -132,13 +130,15 @@ void owl_start_color(void) {
 void owl_start_curses(void) {
   struct termios tio;
   /* save initial terminal settings */
-  tcgetattr(0, owl_global_get_startup_tio(&g));
+  tcgetattr(STDIN_FILENO, owl_global_get_startup_tio(&g));
 
-  tcgetattr(0, &tio);
+  tcgetattr(STDIN_FILENO, &tio);
   tio.c_iflag &= ~(ISTRIP|IEXTEN);
-  tio.c_cc[VQUIT] = 0;
-  tio.c_cc[VSUSP] = 0;
-  tcsetattr(0, TCSAFLUSH, &tio);
+  tio.c_cc[VQUIT] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tio.c_cc[VSUSP] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tio.c_cc[VSTART] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tio.c_cc[VSTOP] = fpathconf(STDIN_FILENO, _PC_VDISABLE);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &tio);
 
   /* screen init */
   initscr();
@@ -146,6 +146,12 @@ void owl_start_curses(void) {
   noecho();
 
   owl_start_color();
+}
+
+void owl_shutdown_curses(void) {
+  endwin();
+  /* restore terminal settings */
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, owl_global_get_startup_tio(&g));
 }
 
 /*
@@ -238,6 +244,8 @@ int owl_process_message(owl_message *m) {
   owl_perlconfig_newmsg(m, NULL);
   /* log the message if we need to */
   owl_log_message(m);
+  /* redraw the sepbar; TODO: don't violate layering */
+  owl_global_sepbar_dirty(&g);
 
   return 1;
 }
@@ -270,8 +278,6 @@ int owl_process_messages(owl_ps_action *d, void *p)
     /* redisplay if necessary */
     /* this should be optimized to not run if the new messages won't be displayed */
     owl_mainwin_redisplay(owl_global_get_mainwin(&g));
-    sepbar(NULL);
-    owl_global_set_needrefresh(&g);
   }
   return newmsgs;
 }
@@ -354,6 +360,18 @@ void sigint_handler(int sig, siginfo_t *si, void *data)
   owl_global_set_interrupted(&g);
 }
 
+static int owl_errsignal_pre_select_action(owl_ps_action *a, void *data)
+{
+  siginfo_t si;
+  int signum;
+  if ((signum = owl_global_get_errsignal_and_clear(&g, &si)) > 0) {
+    owl_function_error("Got unexpected signal: %d %s  (code: %d band: %ld  errno: %d)",
+        signum, signum==SIGPIPE?"SIGPIPE":"SIG????",
+        si.si_code, si.si_band, si.si_errno);
+  }
+  return 0;
+}
+
 void owl_register_signal_handlers(void) {
   struct sigaction sigact;
 
@@ -408,46 +426,40 @@ void stderr_redirect_handler(const owl_io_dispatch *d, void *data)
   /*owl_function_debugmsg("stderr_redirect: navail = %d\n", navail);*/
   if (navail<=0) return;
   /* if (navail>256) { navail = 256; } */
-  buf = owl_malloc(navail+1);
+  buf = g_malloc(navail+1);
 
   bread = read(rfd, buf, navail);
   if (buf[navail-1] != '\0') {
     buf[navail] = '\0';
   }
 
-  err = owl_sprintf("[stderr]\n%s", buf);
-  owl_free(buf);
+  err = g_strdup_printf("[stderr]\n%s", buf);
+  g_free(buf);
 
   owl_function_log_err(err);
-  owl_free(err);
+  g_free(err);
 }
 
 #endif /* OWL_STDERR_REDIR */
 
 static int owl_refresh_pre_select_action(owl_ps_action *a, void *data)
 {
+  owl_colorpair_mgr *cpmgr;
+
   /* if a resize has been scheduled, deal with it */
-  owl_global_resize(&g, 0, 0);
-  /* also handle relayouts */
-  owl_global_relayout(&g);
-
+  owl_global_check_resize(&g);
   /* update the terminal if we need to */
-  if (owl_global_is_needrefresh(&g)) {
-    /* these are here in case a relayout changes the windows */
-    WINDOW *sepwin = owl_global_get_curs_sepwin(&g);
-    WINDOW *typwin = owl_global_get_curs_typwin(&g);
-
-    /* push all changed windows to screen */
-    update_panels();
-    /* leave the cursor in the appropriate window */
-    if (!owl_popwin_is_active(owl_global_get_popwin(&g))
-	&& owl_global_get_typwin(&g)) {
-      owl_function_set_cursor(typwin);
-    } else {
-      owl_function_set_cursor(sepwin);
-    }
-    doupdate();
-    owl_global_set_noneedrefresh(&g);
+  owl_window_redraw_scheduled();
+  /* On colorpair shortage, reset and redraw /everything/. NOTE: if
+   * the current screen uses too many colorpairs, this draws
+   * everything twice. But this is unlikely; COLOR_PAIRS is 64 with
+   * 8+1 colors, and 256^2 with 256+1 colors. (+1 for default.) */
+  cpmgr = owl_global_get_colorpair_mgr(&g);
+  if (cpmgr->overflow) {
+    owl_function_debugmsg("colorpairs: color shortage; reset pairs and redraw. COLOR_PAIRS = %d", COLOR_PAIRS);
+    owl_fmtext_reset_colorpairs(cpmgr);
+    owl_function_full_redisplay();
+    owl_window_redraw_scheduled();
   }
   return 0;
 }
@@ -455,8 +467,8 @@ static int owl_refresh_pre_select_action(owl_ps_action *a, void *data)
 
 int main(int argc, char **argv, char **env)
 {
-  int argcsave;
-  const char *const *argvsave;
+  int argc_copy;
+  char **argv_copy;
   char *perlout, *perlerr;
   owl_style *s;
   const char *dir;
@@ -465,8 +477,8 @@ int main(int argc, char **argv, char **env)
   if (!GLIB_CHECK_VERSION (2, 12, 0))
     g_error ("GLib version 2.12.0 or above is needed.");
 
-  argcsave=argc;
-  argvsave=strs(argv);
+  argc_copy = argc;
+  argv_copy = g_strdupv(argv);
 
   setlocale(LC_ALL, "");
 
@@ -484,11 +496,12 @@ int main(int argc, char **argv, char **env)
   if (opts.debug) owl_global_set_debug_on(&g);
   if (opts.confdir) owl_global_set_confdir(&g, opts.confdir);
   owl_function_debugmsg("startup: first available debugging message");
-  owl_global_set_startupargs(&g, argcsave, argvsave);
+  owl_global_set_startupargs(&g, argc_copy, argv_copy);
+  g_strfreev(argv_copy);
   owl_global_set_haveaim(&g);
 
   /* register STDIN dispatch; throw away return, we won't need it */
-  owl_select_add_io_dispatch(STDIN, OWL_IO_READ, &owl_process_input, NULL, NULL);
+  owl_select_add_io_dispatch(STDIN_FILENO, OWL_IO_READ, &owl_process_input, NULL, NULL);
   owl_zephyr_initialize();
 
 #if OWL_STDERR_REDIR
@@ -509,14 +522,14 @@ int main(int argc, char **argv, char **env)
   } else {
     char *tty = owl_util_get_default_tty();
     owl_global_set_tty(&g, tty);
-    owl_free(tty);
+    g_free(tty);
   }
 
   /* Initialize perl */
   owl_function_debugmsg("startup: processing config file");
 
   owl_global_pop_context(&g);
-  owl_global_push_context(&g, OWL_CTX_READCONFIG, NULL, NULL);
+  owl_global_push_context(&g, OWL_CTX_READCONFIG, NULL, NULL, NULL);
 
   perlerr=owl_perlconfig_initperl(opts.configfile, &argc, &argv, &env);
   if (perlerr) {
@@ -545,15 +558,16 @@ int main(int argc, char **argv, char **env)
   /* execute the startup function in the configfile */
   owl_function_debugmsg("startup: executing perl startup, if applicable");
   perlout = owl_perlconfig_execute("BarnOwl::Hooks::_startup();");
-  if (perlout) owl_free(perlout);
+  if (perlout) g_free(perlout);
 
   /* welcome message */
   if(owl_messagelist_get_size(owl_global_get_msglist(&g)) == 0) {
   owl_function_debugmsg("startup: creating splash message");
   owl_function_adminmsg("",
     "-----------------------------------------------------------------------\n"
-    "Welcome to barnowl version " OWL_VERSION_STRING ".  Press 'h' for on-line help.\n"
+    "Welcome to barnowl version " OWL_VERSION_STRING ".\n"
     "To see a quick introduction, type ':show quickstart'.                  \n"
+    "Press 'h' for on-line help.                                            \n"
     "                                                                       \n"
     "BarnOwl is free software. Type ':show license' for more                \n"
     "information.                                                     ^ ^   \n"
@@ -562,19 +576,10 @@ int main(int argc, char **argv, char **env)
     "-----------------------------------------------------------------m-m---\n"
   );
   }
-  sepbar(NULL);
 
   /* process the startup file */
   owl_function_debugmsg("startup: processing startup file");
   owl_function_source(NULL);
-
-  /* Set the default style */
-  owl_function_debugmsg("startup: setting startup and default style");
-  if (0 != strcmp(owl_global_get_default_style(&g), "__unspecified__")) {
-    /* the style was set by the user: leave it alone */
-  } else {
-    owl_global_set_default_style(&g, "default");
-  }
 
   owl_function_debugmsg("startup: set style for the view: %s", owl_global_get_default_style(&g));
   s = owl_global_get_style_by_name(&g, owl_global_get_default_style(&g));
@@ -586,34 +591,18 @@ int main(int argc, char **argv, char **env)
   owl_function_debugmsg("startup: setting context interactive");
 
   owl_global_pop_context(&g);
-  owl_global_push_context(&g, OWL_CTX_READCONFIG|OWL_CTX_RECV, NULL, "recv");
-
-  /* If we ever deprecate the mainloop hook, remove this. */
-  owl_select_add_timer(0, 1, owl_perlconfig_mainloop, NULL, NULL);
+  owl_global_push_context(&g, OWL_CTX_INTERACTIVE|OWL_CTX_RECV, NULL, "recv", NULL);
 
   owl_select_add_pre_select_action(owl_refresh_pre_select_action, NULL, NULL);
   owl_select_add_pre_select_action(owl_process_messages, NULL, NULL);
   owl_select_add_pre_select_action(owl_view_iterator_delayed_delete, NULL, NULL);
+  owl_select_add_pre_select_action(owl_errsignal_pre_select_action, NULL, NULL);
 
   owl_function_debugmsg("startup: entering main loop");
-  /* main loop */
-  while (1) {
-    owl_perl_savetmps();
+  owl_select_run_loop();
 
-    /* select on FDs we know about. */
-    owl_select();
-
-    /* Log any error signals */
-    {
-      siginfo_t si;
-      int signum;
-      if ((signum = owl_global_get_errsignal_and_clear(&g, &si)) > 0) {
-	owl_function_error("Got unexpected signal: %d %s  (code: %d band: %ld  errno: %d)",
-			   signum, signum==SIGPIPE?"SIGPIPE":"SIG????",
-			   si.si_code, si.si_band, si.si_errno);
-      }
-    }
-
-    owl_perl_freetmps();
-  }
+  /* Shut down everything. */
+  owl_zephyr_shutdown();
+  owl_shutdown_curses();
+  return 0;
 }

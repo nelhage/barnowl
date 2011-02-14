@@ -30,7 +30,7 @@ SV *owl_new_sv(const char * str)
   } else {
     char *escape = owl_escape_highbit(str);
     owl_function_error("Internal error! Non-UTF-8 string encountered:\n%s", escape);
-    owl_free(escape);
+    g_free(escape);
   }
   return ret;
 }
@@ -68,7 +68,7 @@ HV *owl_new_hv(const owl_dict *d, SV *(*to_sv)(const void *))
     element = owl_dict_find_element(d, key);
     (void)hv_store(ret, key, strlen(key), to_sv(element), 0);
   }
-  owl_list_cleanup(&l, owl_free);
+  owl_list_cleanup(&l, g_free);
 
   return ret;
 }
@@ -127,7 +127,7 @@ char *owl_perlconfig_call_with_message(const char *subname, const owl_message *m
   srv = POPs;
 
   if (srv) {
-    out = owl_strdup(SvPV_nolen(srv));
+    out = g_strdup(SvPV_nolen(srv));
   } else {
     out = NULL;
   }
@@ -180,7 +180,7 @@ char * owl_perlconfig_message_call_method(const owl_message *m, const char *meth
   srv = POPs;
 
   if (srv) {
-    out = owl_strdup(SvPV_nolen(srv));
+    out = g_strdup(SvPV_nolen(srv));
   } else {
     out = NULL;
   }
@@ -214,14 +214,14 @@ char *owl_perlconfig_initperl(const char * file, int *Pargc, char ***Pargv, char
 
   ret=perl_parse(p, owl_perl_xs_init, 2, (char **)args, NULL);
   if (ret || SvTRUE(ERRSV)) {
-    err=owl_strdup(SvPV_nolen(ERRSV));
+    err=g_strdup(SvPV_nolen(ERRSV));
     sv_setsv(ERRSV, &PL_sv_undef);     /* and clear the error */
     return(err);
   }
 
   ret=perl_run(p);
   if (ret || SvTRUE(ERRSV)) {
-    err=owl_strdup(SvPV_nolen(ERRSV));
+    err=g_strdup(SvPV_nolen(ERRSV));
     sv_setsv(ERRSV, &PL_sv_undef);     /* and clear the error */
     return(err);
   }
@@ -249,15 +249,15 @@ char *owl_perlconfig_initperl(const char * file, int *Pargc, char ***Pargv, char
 
   /* Add the system lib path to @INC */
   inc = get_av("INC", 0);
-  path = owl_sprintf("%s/lib", owl_get_datadir());
+  path = g_strdup_printf("%s/lib", owl_get_datadir());
   av_unshift(inc, 1);
   av_store(inc, 0, owl_new_sv(path));
-  owl_free(path);
+  g_free(path);
 
   eval_pv("use BarnOwl;", FALSE);
 
   if (SvTRUE(ERRSV)) {
-    err=owl_strdup(SvPV_nolen(ERRSV));
+    err=g_strdup(SvPV_nolen(ERRSV));
     sv_setsv (ERRSV, &PL_sv_undef);     /* and clear the error */
     return(err);
   }
@@ -295,7 +295,7 @@ char *owl_perlconfig_execute(const char *line)
     sv_setsv (ERRSV, &PL_sv_undef);     /* and clear the error */
   }
 
-  out = owl_strdup(SvPV(response, len));
+  out = g_strdup(SvPV(response, len));
   FREETMPS;
   LEAVE;
 
@@ -309,7 +309,7 @@ void owl_perlconfig_getmsg(const owl_message *m, const char *subname)
     ptr = owl_perlconfig_call_with_message(subname?subname
                                            :"BarnOwl::_receive_msg_legacy_wrap", m);
   }
-  if (ptr) owl_free(ptr);
+  if (ptr) g_free(ptr);
 }
 
 /* Called on all new messages; receivemsg is only called on incoming ones */
@@ -320,7 +320,7 @@ void owl_perlconfig_newmsg(const owl_message *m, const char *subname)
     ptr = owl_perlconfig_call_with_message(subname?subname
                                            :"BarnOwl::Hooks::_new_msg", m);
   }
-  if (ptr) owl_free(ptr);
+  if (ptr) g_free(ptr);
 }
 
 void owl_perlconfig_new_command(const char *name)
@@ -334,7 +334,7 @@ void owl_perlconfig_new_command(const char *name)
   XPUSHs(sv_2mortal(owl_new_sv(name)));
   PUTBACK;
 
-  call_pv("BarnOwl::Hooks::_new_command", G_SCALAR|G_VOID);
+  call_pv("BarnOwl::Hooks::_new_command", G_SCALAR|G_VOID|G_EVAL);
 
   SPAGAIN;
 
@@ -374,7 +374,7 @@ char *owl_perlconfig_perlcmd(const owl_cmd *cmd, int argc, const char *const *ar
       croak("Perl command %s returned more than one value!", cmd->name);
     rv = POPs;
     if(SvTRUE(rv)) {
-      ret = owl_strdup(SvPV_nolen(rv));
+      ret = g_strdup(SvPV_nolen(rv));
     }
   }
 
@@ -427,19 +427,6 @@ void owl_perlconfig_dec_refcnt(void *data)
 {
   SV *v = data;
   SvREFCNT_dec(v);
-}
-
-void owl_perlconfig_mainloop(owl_timer *t, void *data)
-{
-  dSP;
-  if (!owl_perlconfig_is_function("BarnOwl::Hooks::_mainloop_hook"))
-    return;
-  PUSHMARK(SP) ;
-  call_pv("BarnOwl::Hooks::_mainloop_hook", G_DISCARD|G_EVAL);
-  if(SvTRUE(ERRSV)) {
-    owl_function_error("%s", SvPV_nolen(ERRSV));
-  }
-  return;
 }
 
 void owl_perlconfig_io_dispatch(const owl_io_dispatch *d, void *data)

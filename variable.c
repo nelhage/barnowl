@@ -109,7 +109,7 @@ static owl_variable variables_to_init[] = {
 	       "the name of the class to which the message was sent.\n" ),
 
   OWLVAR_ENUM( "loggingdirection" /* %OwlVarStub */, OWL_LOGGING_DIRECTION_BOTH,
-	       "specifices which kind of messages should be logged",
+	       "specifies which kind of messages should be logged",
 	       "Can be one of 'both', 'in', or 'out'.  If 'in' is\n"
 	       "selected, only incoming messages are logged, if 'out'\n"
 	       "is selected only outgoing messages are logged.  If 'both'\n"
@@ -137,7 +137,7 @@ static owl_variable variables_to_init[] = {
 		    "When this is enabled, Owl will periodically check the zephyr\n"
 		    "location of users in your .anyone file.  If a user is present\n"
 		    "but sent no login message, or a user is not present that sent no\n"
-		    "logout message, a pseudo login or logout message wil be created\n",
+		    "logout message, a pseudo login or logout message will be created\n",
 		    NULL, owl_variable_pseudologins_set, NULL),
 
   OWLVAR_BOOL( "ignorelogins" /* %OwlVarStub */, 0,
@@ -150,7 +150,7 @@ static owl_variable variables_to_init[] = {
 		 "name of a filter controlling which messages to log",
 
 		 "If non empty, any messages matching the given filter will be logged.\n"
-		 "This is a completely separate mechanisim from the other logging\n"
+		 "This is a completely separate mechanism from the other logging\n"
 		 "variables like logging, classlogging, loglogins, loggingdirection,\n"
 		 "etc.  If you want this variable to control all logging, make sure\n"
 		 "all other logging variables are in their default state.\n"),
@@ -198,7 +198,7 @@ static owl_variable variables_to_init[] = {
 
   OWLVAR_PATH( "newmsgproc" /* %OwlVarStub:newmsgproc */, NULL,
 	       "name of a program to run when new messages are present",
-	       "The named program will be run when owl recevies new.\n"
+	       "The named program will be run when owl receives new\n"
 	       "messages.  It will not be run again until the first\n"
 	       "instance exits"),
 
@@ -213,7 +213,8 @@ static owl_variable variables_to_init[] = {
 		 "zsig perl function",
 		 "Called every time you start a zephyrgram without an\n"
 		 "explicit zsig.  The default setting implements the policy\n"
-		 "descripted in the documentation for the 'zsig' variable.\n"),
+		 "described in the documentation for the 'zsig' variable.\n"
+		 "See also BarnOwl::random_zephyr_signature().\n"),
 
   OWLVAR_STRING( "zsig" /* %OwlVarStub */, "",
 	         "zephyr signature",
@@ -267,7 +268,7 @@ static owl_variable variables_to_init[] = {
   OWLVAR_STRING_FULL( "tty" /* %OwlVarStub */, "", "tty name for zephyr location", "",
 		      NULL, owl_variable_tty_set, NULL),
 
-  OWLVAR_STRING( "default_style" /* %OwlVarStub */, "__unspecified__",
+  OWLVAR_STRING( "default_style" /* %OwlVarStub */, "default",
 		 "name of the default formatting style",
 		 "This sets the default message formatting style.\n"
 		 "Styles may be created with the 'style' command.\n"
@@ -297,7 +298,7 @@ static owl_variable variables_to_init[] = {
   OWLVAR_INT( "aim_ignorelogin_timer" /* %OwlVarStub */, 15,
 	      "number of seconds after AIM login to ignore login messages",
 	      "This specifies the number of seconds to wait after an\n"
-	      "AIM login before allowing the recipt of AIM login notifications.\n"
+	      "AIM login before allowing the receipt of AIM login notifications.\n"
 	      "By default this is set to 15.  If you would like to view login\n"
 	      "notifications of buddies as soon as you login, set it to 0 instead."),
 
@@ -402,7 +403,7 @@ int owl_variable_typewinsize_set(owl_variable *v, const void *newval)
 {
   int rv;
   rv = owl_variable_int_set_default(v, newval);
-  if (0 == rv) owl_global_set_relayout_pending(&g);
+  if (0 == rv) owl_mainpanel_layout_contents(&g.mainpanel);
   return(rv);
 }
 
@@ -435,7 +436,8 @@ int owl_variable_pseudologins_set(owl_variable *v, const void *newval)
     if (*(const int*)newval == 1) {
       owl_function_zephyr_buddy_check(0);
       if (timer == NULL) {
-        timer = owl_select_add_timer(180, 180, owl_zephyr_buddycheck_timer, NULL, NULL);
+        timer = owl_select_add_timer("owl_zephyr_buddycheck_timer",
+                                     180, 180, owl_zephyr_buddycheck_timer, NULL, NULL);
       }
     } else {
       if (timer != NULL) {
@@ -478,8 +480,12 @@ int owl_variable_dict_setup(owl_vardict *vd) {
   owl_variable *var, *cur;
   if (owl_dict_create(vd)) return(-1);
   for (var = variables_to_init; var->name != NULL; var++) {
-    cur = owl_malloc(sizeof(owl_variable));
+    cur = g_new(owl_variable, 1);
     *cur = *var;
+    /* strdup all the strings so we can delete them consistently. */
+    cur->name = g_strdup(var->name);
+    cur->summary = g_strdup(var->summary);
+    cur->description = g_strdup(var->description);
     switch (cur->type) {
     case OWL_VARIABLE_OTHER:
       cur->set_fn(cur, cur->pval_default);
@@ -512,7 +518,7 @@ int owl_variable_dict_setup(owl_vardict *vd) {
 	cur->get_tostring_fn = owl_variable_bool_get_tostring_default;      
       if (!cur->delete_fn)
 	cur->delete_fn = owl_variable_delete_default;
-      cur->val = owl_malloc(sizeof(int));
+      cur->val = g_new(int, 1);
       cur->set_fn(cur, &cur->ival_default);
       break;
     case OWL_VARIABLE_INT:
@@ -528,7 +534,7 @@ int owl_variable_dict_setup(owl_vardict *vd) {
 	cur->get_tostring_fn = owl_variable_int_get_tostring_default;      
       if (!cur->delete_fn)
 	cur->delete_fn = owl_variable_delete_default;
-      cur->val = owl_malloc(sizeof(int));
+      cur->val = g_new(int, 1);
       cur->set_fn(cur, &cur->ival_default);
       break;
     default:
@@ -546,31 +552,30 @@ void owl_variable_dict_add_variable(owl_vardict * vardict,
 }
 
 owl_variable * owl_variable_newvar(const char *name, const char *summary, const char * description) {
-  owl_variable * var = owl_malloc(sizeof(owl_variable));
-  memset(var, 0, sizeof(owl_variable));
-  var->name = owl_strdup(name);
-  var->summary = owl_strdup(summary);
-  var->description = owl_strdup(description);
+  owl_variable * var = g_new0(owl_variable, 1);
+  var->name = g_strdup(name);
+  var->summary = g_strdup(summary);
+  var->description = g_strdup(description);
   return var;
 }
 
 void owl_variable_update(owl_variable *var, const char *summary, const char *desc) {
-  if(var->summary) owl_free(var->summary);
-  var->summary = owl_strdup(summary);
-  if(var->description) owl_free(var->description);
-  var->description = owl_strdup(desc);
+  if(var->summary) g_free(var->summary);
+  var->summary = g_strdup(summary);
+  if(var->description) g_free(var->description);
+  var->description = g_strdup(desc);
 }
 
 void owl_variable_dict_newvar_string(owl_vardict * vd, const char *name, const char *summ, const char * desc, const char * initval) {
   owl_variable *old = owl_variable_get_var(vd, name, OWL_VARIABLE_STRING);
   if(old) {
     owl_variable_update(old, summ, desc);
-    if(old->pval_default) owl_free(old->pval_default);
-    old->pval_default = owl_strdup(initval);
+    if(old->pval_default) g_free(old->pval_default);
+    old->pval_default = g_strdup(initval);
   } else {
     owl_variable * var = owl_variable_newvar(name, summ, desc);
     var->type = OWL_VARIABLE_STRING;
-    var->pval_default = owl_strdup(initval);
+    var->pval_default = g_strdup(initval);
     var->set_fn = owl_variable_string_set_default;
     var->set_fromstring_fn = owl_variable_string_set_fromstring_default;
     var->get_fn = owl_variable_get_default;
@@ -596,7 +601,7 @@ void owl_variable_dict_newvar_int(owl_vardict * vd, const char *name, const char
     var->get_fn = owl_variable_get_default;
     var->get_tostring_fn = owl_variable_int_get_tostring_default;
     var->delete_fn = owl_variable_delete_default;
-    var->val = owl_malloc(sizeof(int));
+    var->val = g_new(int, 1);
     var->set_fn(var, &initval);
     owl_variable_dict_add_variable(vd, var);
   }
@@ -617,7 +622,7 @@ void owl_variable_dict_newvar_bool(owl_vardict * vd, const char *name, const cha
     var->get_fn = owl_variable_get_default;
     var->get_tostring_fn = owl_variable_bool_get_tostring_default;
     var->delete_fn = owl_variable_delete_default;
-    var->val = owl_malloc(sizeof(int));
+    var->val = g_new(int, 1);
     var->set_fn(var, &initval);
     owl_variable_dict_add_variable(vd, var);
   }
@@ -635,13 +640,16 @@ void owl_variable_dict_get_names(const owl_vardict *d, owl_list *l) {
 
 void owl_variable_dict_namelist_cleanup(owl_list *l)
 {
-  owl_list_cleanup(l, owl_free);
+  owl_list_cleanup(l, g_free);
 }
 
 void owl_variable_delete(owl_variable *v)
 {
   if (v->delete_fn) v->delete_fn(v);
-  owl_free(v);
+  g_free(v->name);
+  g_free(v->summary);
+  g_free(v->description);
+  g_free(v);
 }
 
 
@@ -862,7 +870,7 @@ const void *owl_variable_get_default(const owl_variable *v) {
 
 void owl_variable_delete_default(owl_variable *v)
 {
-  if (v->val) owl_free(v->val);
+  if (v->val) g_free(v->val);
 }
 
 /* default functions for booleans */
@@ -944,9 +952,9 @@ int owl_variable_enum_validate(const owl_variable *v, const void *newval) {
   char **enums;
   int nenums, val;
   if (newval == NULL) return(0);
-  enums = atokenize(v->validsettings, ",", &nenums);
-  if (enums == NULL) return(0);
-  atokenize_delete(enums, nenums);
+  enums = g_strsplit_set(v->validsettings, ",", 0);
+  nenums = g_strv_length(enums);
+  g_strfreev(enums);
   val = *(const int*)newval;
   if (val < 0 || val >= nenums) {
     return(0);
@@ -956,16 +964,15 @@ int owl_variable_enum_validate(const owl_variable *v, const void *newval) {
 
 int owl_variable_enum_set_fromstring(owl_variable *v, const char *newval) {
   char **enums;
-  int nenums, i, val=-1;
+  int i, val=-1;
   if (newval == NULL) return(-1);
-  enums = atokenize(v->validsettings, ",", &nenums);
-  if (enums == NULL) return(-1);
-  for (i=0; i<nenums; i++) {
+  enums = g_strsplit_set(v->validsettings, ",", 0);
+  for (i = 0; enums[i] != NULL; i++) {
     if (0==strcmp(newval, enums[i])) {
       val = i;
     }
   }
-  atokenize_delete(enums, nenums);
+  g_strfreev(enums);
   if (val == -1) return(-1);
   return (v->set_fn(v, &val));
 }
@@ -978,15 +985,16 @@ int owl_variable_enum_get_tostring(const owl_variable *v, char* buf, int bufsize
     snprintf(buf, bufsize, "<null>");
     return -1;
   }
-  enums = atokenize(v->validsettings, ",", &nenums);
+  enums = g_strsplit_set(v->validsettings, ",", 0);
+  nenums = g_strv_length(enums);
   i = *(const int*)val;
   if (i<0 || i>=nenums) {
     snprintf(buf, bufsize, "<invalid:%d>",i);
-    atokenize_delete(enums, nenums);
+    g_strfreev(enums);
     return(-1);
   }
   snprintf(buf, bufsize, "%s", enums[i]);
-  atokenize_delete(enums, nenums);
+  g_strfreev(enums);
   return 0;
 }
 
@@ -1001,8 +1009,8 @@ int owl_variable_string_set_default(owl_variable *v, const void *newval) {
   if (v->validate_fn) {
     if (!v->validate_fn(v, newval)) return(-1);
   }
-  if (v->val) owl_free(v->val);
-  v->val = owl_strdup(newval);
+  if (v->val) g_free(v->val);
+  v->val = g_strdup(newval);
   return(0);
 }
 

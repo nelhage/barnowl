@@ -7,7 +7,7 @@ die() {
 
 usage() {
     cat >&2 <<EOF
-Usage: %0 [options]
+Usage: $0 [options]
 Generate a barnowl release tarball.
 
 OPTIONS:
@@ -78,6 +78,7 @@ CODIR=$(pwd)
 cd "$TMPDIR/$TGZ"
 [ "$git" ] && perl -i -pe 's{^(AC_INIT\(\[[^\]]+\],\s*)\[([^\]]+)\]}{${1}['$VERS']}' configure.ac
 autoreconf -fvi
+rm -r autom4te.cache/
 cd "$TMPDIR"
 tar czvf "$TGZ.tgz" "$TGZ"
 cd "$CODIR"
@@ -93,5 +94,5 @@ echo "Remember to bump OWL_VERSION_STRING for future development."
 COMMIT=$(git rev-parse "$TAG")
 NOW=$(date +"%B %d, %Y")
 cat <<EOF
- * '''$NOW''': BarnOwl $VERS Released. [wiki:Download] it here. or see the [wiki:release-notes/$VERS Release Notes] or [/browser/ChangeLog?rev=barnowl-$VERS ChangeLog].
+ * '''$NOW''': BarnOwl $VERS released. [wiki:Download] it here, or read the [wiki:release-notes/$VERS release notes] or [/browser/ChangeLog?rev=barnowl-$VERS ChangeLog].
 EOF

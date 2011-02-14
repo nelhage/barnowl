@@ -1,87 +1,105 @@
 #include "owl.h"
 
-int owl_popwin_init(owl_popwin *pw)
+owl_popwin *owl_popwin_new(void)
 {
-  pw->active=0;
-  pw->lines=0;
-  pw->cols=0;
-  return(0);
+  owl_popwin *pw = g_new0(owl_popwin, 1);
+
+  pw->border = owl_window_new(NULL);
+  pw->content = owl_window_new(pw->border);
+  /* To be thorough, we ensure each signal is disconnected when we close. */
+  pw->sig_redraw_id =
+    g_signal_connect(pw->border, "redraw", G_CALLBACK(owl_popwin_draw_border), 0);
+  pw->sig_resize_id =
+    g_signal_connect(pw->border, "resized", G_CALLBACK(owl_popwin_size_content), pw);
+  owl_signal_connect_object(owl_window_get_screen(), "resized", G_CALLBACK(owl_popwin_size_border), pw->border, 0);
+
+  /* bootstrap sizing */
+  owl_popwin_size_border(owl_window_get_screen(), pw->border);
+
+  owl_window_show(pw->content);
+
+  return pw;
 }
 
 int owl_popwin_up(owl_popwin *pw)
 {
-  int glines, gcols, startcol, startline;
-  WINDOW *popwin, *borderwin;
+  if (owl_window_is_shown(pw->border))
+    return 1;
+  owl_window_show(pw->border);
+  return 0;
+}
 
-  /* calculate the size of the popwin */
-  glines=owl_global_get_lines(&g);
-  gcols=owl_global_get_cols(&g);
+void owl_popwin_size_border(owl_window *parent, void *user_data)
+{
+  int lines, cols, startline, startcol;
+  int glines, gcols;
+  owl_window *border = user_data;
 
-  pw->lines = owl_util_min(glines,24)*3/4 + owl_util_max(glines-24,0)/2;
-  startline = (glines-pw->lines)/2;
+  owl_window_get_position(parent, &glines, &gcols, 0, 0);
 
-  pw->cols = owl_util_min(gcols,90)*15/16 + owl_util_max(gcols-90,0)/2;
-  startcol = (gcols-pw->cols)/2;
+  lines = MIN(glines, 24) * 3/4 + MAX(glines - 24, 0) / 2;
+  startline = (glines-lines)/2;
+  cols = MIN(gcols, 90) * 15 / 16 + MAX(gcols - 90, 0) / 2;
+  startcol = (gcols-cols)/2;
 
-  borderwin = newwin(pw->lines, pw->cols, startline, startcol);
-  pw->borderpanel = new_panel(borderwin);
-  popwin = newwin(pw->lines-2, pw->cols-2, startline+1, startcol+1);
-  pw->poppanel = new_panel(popwin);
+  owl_window_set_position(border, lines, cols, startline, startcol);
+}
 
-  werase(popwin);
-  werase(borderwin);
+void owl_popwin_size_content(owl_window *parent, void *user_data)
+{
+  int lines, cols;
+  owl_popwin *pw = user_data;
+  owl_window_get_position(parent, &lines, &cols, 0, 0);
+  owl_window_set_position(pw->content, lines-2, cols-2, 1, 1);
+}
+
+void owl_popwin_draw_border(owl_window *w, WINDOW *borderwin, void *user_data)
+{
+  int lines, cols;
+  owl_window_get_position(w, &lines, &cols, 0, 0);
   if (owl_global_is_fancylines(&g)) {
     box(borderwin, 0, 0);
   } else {
     box(borderwin, '|', '-');
     wmove(borderwin, 0, 0);
     waddch(borderwin, '+');
-    wmove(borderwin, pw->lines-1, 0);
+    wmove(borderwin, lines-1, 0);
     waddch(borderwin, '+');
-    wmove(borderwin, pw->lines-1, pw->cols-1);
+    wmove(borderwin, lines-1, cols-1);
     waddch(borderwin, '+');
-    wmove(borderwin, 0, pw->cols-1);
+    wmove(borderwin, 0, cols-1);
     waddch(borderwin, '+');
   }
-    
-  owl_global_set_needrefresh(&g);
-  pw->active=1;
-  return(0);
 }
 
 int owl_popwin_close(owl_popwin *pw)
 {
-  WINDOW *popwin, *borderwin;
+  if (!owl_window_is_shown(pw->border))
+    return 1;
+  owl_window_hide(pw->border);
+  return 0;
+}
 
-  popwin = panel_window(pw->poppanel);
-  borderwin = panel_window(pw->borderpanel);
+void owl_popwin_delete(owl_popwin *pw)
+{
+  owl_popwin_close(pw);
 
-  del_panel(pw->poppanel);
-  del_panel(pw->borderpanel);
-  delwin(popwin);
-  delwin(borderwin);
+  /* Remove everything that references us. */
+  g_signal_handler_disconnect(pw->border, pw->sig_resize_id);
+  g_signal_handler_disconnect(pw->border, pw->sig_redraw_id);
+  owl_window_unlink(pw->border);
+  g_object_unref(pw->border);
+  g_object_unref(pw->content);
 
-  pw->active=0;
-  owl_global_set_needrefresh(&g);
-  return(0);
+  g_free(pw);
 }
 
 int owl_popwin_is_active(const owl_popwin *pw)
 {
-  return pw->active;
+  return owl_window_is_shown(pw->border);
 }
 
-WINDOW *owl_popwin_get_curswin(const owl_popwin *pw)
+owl_window *owl_popwin_get_content(const owl_popwin *pw)
 {
-  return panel_window(pw->poppanel);
-}
-
-int owl_popwin_get_lines(const owl_popwin *pw)
-{
-  return(pw->lines-2);
-}
-
-int owl_popwin_get_cols(const owl_popwin *pw)
-{
-  return(pw->cols-2);
+  return pw->content;
 }

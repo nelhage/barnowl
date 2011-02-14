@@ -19,6 +19,7 @@ sub jtype { shift->{jtype} };
 sub from { shift->{from} };
 sub to { shift->{to} };
 sub room { shift->{room} };
+sub nick { shift->{nick} };
 sub subject { shift->{subject} };
 sub status { shift->{status} }
 
@@ -40,6 +41,13 @@ sub login_extra {
 
 sub long_sender {
     my $self = shift;
+    if ($self->jtype eq 'groupchat' && $self->nick) {
+        my $from_jid = Net::Jabber::JID->new($self->from);
+        if ($from_jid->GetJID('base') eq $self->room &&
+            $from_jid->GetResource() eq $self->nick) {
+            return $self->nick;
+        }
+    }
     return $self->from;
 }
 
@@ -53,7 +61,9 @@ sub subcontext {
 
 sub personal_context {
     my $self = shift;
-    if ($self->is_incoming) {
+    if($self->subject) {
+        return "subject: " . $self->subject;
+    } elsif ($self->is_incoming) {
         return "to " . $self->to;
     } else {
         return "from " . $self->from;
@@ -76,9 +86,17 @@ sub smartfilter {
         return smartfilter_user($user, $inst);
     } elsif ($self->jtype eq 'groupchat') {
         my $room = $self->room;
-        $filter = "jabber-room-$room";
-        BarnOwl::command(qw[filter], $filter,
-                         qw[type ^jabber$ and room], "^\Q$room\E\$");
+        if ($inst) {
+            my $subject = $self->subject;
+            $filter = "jabber-room-$room-subject-$subject";
+            BarnOwl::command(qw[filter], $filter,
+                             qw[type ^jabber$ and room], "^\Q$room\E\$",
+                             qw[and subject], "^\Q$subject\E\$");
+        } else {
+            $filter = "jabber-room-$room";
+            BarnOwl::command(qw[filter], $filter,
+                             qw[type ^jabber$ and room], "^\Q$room\E\$");
+        }
         return $filter;
     } elsif ($self->login ne 'none') {
         return smartfilter_user($self->from, $inst);

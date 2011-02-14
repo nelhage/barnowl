@@ -1,5 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT([BarnOwl],[1.7dev],[bug-barnowl@mit.edu])
+AC_INIT([BarnOwl],[1.8dev],[bug-barnowl@mit.edu])
 AM_INIT_AUTOMAKE([1.7.0 -Wall -Wno-portability foreign])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
@@ -16,7 +16,7 @@ AC_ARG_WITH([stack-protector],
 
 AS_IF([test "x$with_stack_protector" != xno],
   [AX_C_CHECK_FLAG([-fstack-protector],[],[],
-    [CFLAGS="$CFLAGS -fstack-protector"],
+    [AM_CFLAGS="$AM_CFLAGS -fstack-protector"],
     [if test "x$with_stack_protector" != xcheck; then
        AC_MSG_FAILURE([--with-stack-protector selected, but gcc does support it.])
      fi
@@ -34,19 +34,26 @@ AC_ARG_WITH([zephyr],
   [],
   [with_zephyr=check])
 
+AC_ARG_WITH([krb4],
+  AS_HELP_STRING([--with-krb4],
+                 [Build with kerberos IV]))
+
 AS_IF([test "x$with_zephyr" != xno],
-  [AC_MSG_CHECKING([for Kerberos IV])
-   AS_IF([krb5-config krb4 --libs >/dev/null 2>&1],
-     [AC_MSG_RESULT([yes])
-      AC_DEFINE([HAVE_KERBEROS_IV], [1], [Define if you have kerberos IV])
-      CFLAGS="${CFLAGS} `krb5-config krb4 --cflags`"
-      LIBS="${LIBS} `krb5-config krb4 --libs`"
-     ],
-     [AC_MSG_RESULT([no])
-      PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
-      CFLAGS="${CFLAGS} ${LIBCRYPTO_CFLAGS}"
-      LIBS="${LIBS} ${LIBCRYPTO_LIBS}"
-     ])
+  [AS_IF([test "x$with_krb4" != "xno"],
+   [AC_MSG_CHECKING([for Kerberos IV])
+    AS_IF([krb5-config krb4 --libs >/dev/null 2>&1],
+      [AC_MSG_RESULT([yes])
+       AC_DEFINE([HAVE_KERBEROS_IV], [1], [Define if you have kerberos IV])
+       AM_CFLAGS="${AM_CFLAGS} `krb5-config krb4 --cflags`"
+       LIBS="${LIBS} `krb5-config krb4 --libs`"
+      ],
+      [AC_MSG_RESULT([no])
+       AS_IF([test "x$with_krb4" = "xyes"],
+             [AC_MSG_ERROR([Kerberos IV requested but not found])])
+       PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
+       AM_CFLAGS="${AM_CFLAGS} ${LIBCRYPTO_CFLAGS}"
+       LIBS="${LIBS} ${LIBCRYPTO_LIBS}"
+     ])])
    AC_CHECK_LIB([zephyr], [ZGetSender],
    [LIBS="$LIBS -lzephyr"
     AC_DEFINE([HAVE_LIBZEPHYR], [1],
@@ -78,7 +85,7 @@ AC_CHECK_HEADERS(strings.h sys/ioctl.h sys/filio.h unistd.h)
 dnl Add CFLAGS for embeded perl
 PERL_CFLAGS=`perl -MExtUtils::Embed -e ccopts`
 AC_MSG_NOTICE([Adding perl CFLAGS ${PERL_CFLAGS}])
-CFLAGS="${CFLAGS} ${PERL_CFLAGS}"
+AM_CFLAGS="${AM_CFLAGS} ${PERL_CFLAGS}"
 
 dnl Find the location of perl XSUBPP
 AC_MSG_CHECKING(for the perl xsubpp precompiler)
@@ -95,7 +102,7 @@ else
    XSUBPPFLAGS=""
 fi
 
-dnl Add LDFLAGS for embedded perl
+dnl Add LIBS for embedded perl
 FOO=`perl -MExtUtils::Embed -e ldopts`
 AC_MSG_NOTICE([Adding perl LIBS ${FOO}])
 LIBS=${LIBS}\ ${FOO}
@@ -106,13 +113,13 @@ AX_PROG_PERL_MODULES([Class::Accessor::Fast],,
 AX_PROG_PERL_MODULES([PAR],,
                      [AC_MSG_WARN([PAR.pm not found. Loadable modules will be disabled.])])
 
-dnl Add CFLAGS and LDFLAGS for glib-2.0
-PKG_CHECK_MODULES(GLIB,glib-2.0)
+dnl Add CFLAGS and LIBS for glib-2.0
+PKG_CHECK_MODULES(GLIB,[glib-2.0 gobject-2.0])
 
 AC_MSG_NOTICE([Adding glib-2.0 CFLAGS ${GLIB_CFLAGS}])
-CFLAGS="${GLIB_CFLAGS} ${CFLAGS}"
-AC_MSG_NOTICE([Adding glib-2.0 LDFLAGS ${GLIB_LIBS}])
-LDFLAGS="${GLIB_LIBS} ${LDFLAGS}"
+AM_CFLAGS="${GLIB_CFLAGS} ${AM_CFLAGS}"
+AC_MSG_NOTICE([Adding glib-2.0 LIBS ${GLIB_LIBS}])
+LIBS="${GLIB_LIBS} ${LIBS}"
 
 if test "x${prefix}" = "xNONE"; then
    prefix="${ac_default_prefix}"
@@ -120,16 +127,24 @@ fi
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 
-AX_CFLAGS_WARN_ALL
-AX_CFLAGS_STRICT_PROTOTYPES
+AX_CFLAGS_WARN_ALL([AM_CFLAGS])
+AX_C_CHECK_FLAG([-Wstrict-prototypes],[],[],[AM_CFLAGS="$AM_CFLAGS -Wstrict-prototypes"])
 
-AX_C_CHECK_FLAG([-Wno-pointer-sign],[],[],
-  [LIBFAIM_CFLAGS="$LIBFAIM_CFLAGS -Wno-pointer-sign"])
+m4_foreach([myflag],
+  [[-Wno-pointer-sign],[-Wno-empty-body],[-Wno-unused-value]],
+  [AX_C_CHECK_FLAG([myflag],[],[],[LIBFAIM_CFLAGS="$LIBFAIM_CFLAGS myflag"])])
 
 AM_CONDITIONAL([ENABLE_ZCRYPT], [test "$HAVE_DES_STRING_TO_KEY" && dnl
                                  test "$HAVE_DES_KEY_SCHED" && dnl
                                  test "$HAVE_DES_ECB_ENCRYPT"])
 
+AM_CFLAGS="$AM_CFLAGS -D_XOPEN_SOURCE=500"
+dnl Define _BSD_SOURCE because zephyr needs caddr_t.
+AM_CFLAGS="$AM_CFLAGS -D_BSD_SOURCE"
+dnl Define __EXTENSIONS__ for strcasecmp on Solaris.
+AM_CFLAGS="$AM_CFLAGS -D__EXTENSIONS__"
+
+AC_SUBST([AM_CFLAGS])
 AC_SUBST([LIBFAIM_CFLAGS])
 
 AC_SUBST(XSUBPPDIR)
@@ -142,5 +157,8 @@ if test "x${HAVE_ZIP}" = "xno"; then
    AC_MSG_ERROR([cannot find a 'zip' binary.])
 fi
 
-AC_CONFIG_FILES([Makefile libfaim/Makefile perl/Makefile perl/modules/Makefile])
+AC_CONFIG_LIBOBJ_DIR([compat])
+AC_REPLACE_FUNCS([memrchr])
+
+AC_CONFIG_FILES([Makefile compat/Makefile libfaim/Makefile perl/Makefile perl/modules/Makefile])
 AC_OUTPUT

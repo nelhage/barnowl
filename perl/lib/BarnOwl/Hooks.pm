@@ -80,11 +80,13 @@ our @EXPORT_OK = qw($startup $shutdown
 
 our %EXPORT_TAGS = (all => [@EXPORT_OK]);
 
+use BarnOwl::MainLoopCompatHook;
+
 our $startup = BarnOwl::Hook->new;
 our $shutdown = BarnOwl::Hook->new;
 our $receiveMessage = BarnOwl::Hook->new;
 our $newMessage = BarnOwl::Hook->new;
-our $mainLoop = BarnOwl::Hook->new;
+our $mainLoop = BarnOwl::MainLoopCompatHook->new;
 our $getBuddyList = BarnOwl::Hook->new;
 our $getQuickstart = BarnOwl::Hook->new;
 
@@ -178,6 +180,7 @@ sub _startup {
         BarnOwl::error("Can't load BarnOwl::ModuleLoader, loadable module support disabled:\n$@");
     }
     
+    $mainLoop->check_owlconf();
     $startup->run(0);
     BarnOwl::startup() if *BarnOwl::startup{CODE};
 }
@@ -202,11 +205,6 @@ sub _new_msg {
     $newMessage->run($m);
     
     BarnOwl::new_msg($m) if *BarnOwl::new_msg{CODE};
-}
-
-sub _mainloop_hook {
-    $mainLoop->run;
-    BarnOwl::mainloop_hook() if *BarnOwl::mainloop_hook{CODE};
 }
 
 sub _get_blist {

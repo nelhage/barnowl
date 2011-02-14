@@ -4,28 +4,30 @@
 #include <ctype.h>
 #include "owl.h"
 
-void owl_text_indent(char *out, const char *in, int n)
+/* Returns a copy of 'in' with each line indented 'n'
+ * characters. Result must be freed with g_free. */
+char *owl_text_indent(const char *in, int n)
 {
   const char *ptr1, *ptr2, *last;
+  GString *out = g_string_new("");
   int i;
-
-  strcpy(out, "");
 
   last=in+strlen(in)-1;
   ptr1=in;
   while (ptr1<=last) {
     for (i=0; i<n; i++) {
-      strcat(out, " ");
+      g_string_append_c(out, ' ');
     }
     ptr2=strchr(ptr1, '\n');
     if (!ptr2) {
-      strcat(out, ptr1);
+      g_string_append(out, ptr1);
       break;
     } else {
-      strncat(out, ptr1, ptr2-ptr1+1);
+      g_string_append_len(out, ptr1, ptr2-ptr1+1);
     }
     ptr1=ptr2+1;
   }
+  return g_string_free(out, false);
 }
 
 int owl_text_num_lines(const char *in)
@@ -50,7 +52,7 @@ char *owl_text_htmlstrip(const char *in)
   const char *ptr1, *end, *ptr2, *ptr3;
   char *out, *out2;
 
-  out=owl_malloc(strlen(in)+30);
+  out=g_new(char, strlen(in)+30);
   strcpy(out, "");
 
   ptr1=in;
@@ -104,28 +106,26 @@ char *owl_text_htmlstrip(const char *in)
   }
 
   out2=owl_text_substitute(out, "&lt;", "<");
-  owl_free(out);
+  g_free(out);
   out=owl_text_substitute(out2, "&gt;", ">");
-  owl_free(out2);
+  g_free(out2);
   out2=owl_text_substitute(out, "&amp;", "&");
-  owl_free(out);
+  g_free(out);
   out=owl_text_substitute(out2, "&quot;", "\"");
-  owl_free(out2);
+  g_free(out2);
   out2=owl_text_substitute(out, "&nbsp;", " ");
-  owl_free(out);
+  g_free(out);
   out=owl_text_substitute(out2, "&ensp;", "  ");
-  owl_free(out2);
+  g_free(out2);
   out2=owl_text_substitute(out, "&emsp;", "   ");
-  owl_free(out);
+  g_free(out);
   out=owl_text_substitute(out2, "&endash;", "--");
-  owl_free(out2);
+  g_free(out2);
   out2=owl_text_substitute(out, "&emdash;", "---");
-  owl_free(out);
+  g_free(out);
 
   return(out2);
 }
-
-#define OWL_TAB_WIDTH 8
 
 /* Caller must free return */
 char *owl_text_expand_tabs(const char *in)
@@ -138,7 +138,7 @@ char *owl_text_expand_tabs(const char *in)
   col = 0;
   while(*p) {
     gunichar c = g_utf8_get_char(p);
-    char *q = g_utf8_next_char(p);
+    const char *q = g_utf8_next_char(p);
     switch (c) {
     case '\t':
       do { len++; col++; } while (col % OWL_TAB_WIDTH);
@@ -155,7 +155,7 @@ char *owl_text_expand_tabs(const char *in)
     p = q;
   }
 
-  ret = owl_malloc(len + 1);
+  ret = g_new(char, len + 1);
 
   p = in;
   out = ret;
@@ -163,7 +163,7 @@ char *owl_text_expand_tabs(const char *in)
   col = 0;
   while(*p) {
     gunichar c = g_utf8_get_char(p);
-    char *q = g_utf8_next_char(p);
+    const char *q = g_utf8_next_char(p);
     switch (c) {
     case '\t':
       do {*(out++) = ' '; col++; } while (col % OWL_TAB_WIDTH);
@@ -192,7 +192,7 @@ char *owl_text_wordwrap(const char *in, int col)
   char *out;
   int cur, lastspace, len, lastnewline;
 
-  out=owl_strdup(in);
+  out=g_strdup(in);
   len=strlen(in);
   cur=0;
   lastspace=-1;
@@ -265,15 +265,6 @@ int only_whitespace(const char *s)
   return(1);
 }
 
-const char *owl_getquoting(const char *line)
-{
-  if (line[0]=='\0') return("'");
-  if (strchr(line, '\'')) return("\"");
-  if (strchr(line, '"')) return("'");
-  if (strcspn(line, "\n\t ") != strlen(line)) return("'");
-  return("");
-}
-
 /* Return a string with any occurances of 'from' replaced with 'to'.
  * Does not currently handle backslash quoting, but may in the future.
  * Caller must free returned string.
@@ -284,17 +275,17 @@ char *owl_text_substitute(const char *in, const char *from, const char *to)
   char *out;
   int   outlen, tolen, fromlen, inpos=0, outpos=0;
 
-  if (!*from) return owl_strdup(in);
+  if (!*from) return g_strdup(in);
 
   outlen = strlen(in)+1;
   tolen  = strlen(to);
   fromlen  = strlen(from);
-  out = owl_malloc(outlen);
+  out = g_new(char, outlen);
 
   while (in[inpos]) {
     if (!strncmp(in+inpos, from, fromlen)) {
       outlen += tolen;
-      out = owl_realloc(out, outlen);
+      out = g_renew(char, out, outlen);
       strcpy(out+outpos, to);
       inpos += fromlen;
       outpos += tolen;
@@ -343,7 +334,7 @@ char *owl_text_quote(const char *in, const char *toquote, const char *quotestr)
     if(strchr(toquote, in[i]) != NULL)
       escape++;
   }
-  out = owl_malloc(in_len + quotestr_len*escape+1);
+  out = g_new(char, in_len + quotestr_len*escape+1);
   for (i=0; i<in_len; i++) {
 
     /* check if it's a character that needs quoting */

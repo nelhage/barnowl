@@ -2,6 +2,7 @@
 
 static int dispatch_active = 0;
 static int psa_active = 0;
+static int loop_active = 0;
 
 int _owl_select_timer_cmp(const owl_timer *t1, const owl_timer *t2) {
   return t1->time - t2->time;
@@ -11,9 +12,9 @@ int _owl_select_timer_eq(const owl_timer *t1, const owl_timer *t2) {
   return t1 == t2;
 }
 
-owl_timer *owl_select_add_timer(int after, int interval, void (*cb)(owl_timer *, void *), void (*destroy)(owl_timer*), void *data)
+owl_timer *owl_select_add_timer(const char* name, int after, int interval, void (*cb)(owl_timer *, void *), void (*destroy)(owl_timer*), void *data)
 {
-  owl_timer *t = owl_malloc(sizeof(owl_timer));
+  owl_timer *t = g_new(owl_timer, 1);
   GList **timers = owl_global_get_timerlist(&g);
 
   t->time = time(NULL) + after;
@@ -21,6 +22,7 @@ owl_timer *owl_select_add_timer(int after, int interval, void (*cb)(owl_timer *,
   t->callback = cb;
   t->destroy = destroy;
   t->data = data;
+  t->name = name ? g_strdup(name) : NULL;
 
   *timers = g_list_insert_sorted(*timers, t,
                                  (GCompareFunc)_owl_select_timer_cmp);
@@ -35,7 +37,8 @@ void owl_select_remove_timer(owl_timer *t)
     if(t->destroy) {
       t->destroy(t);
     }
-    owl_free(t);
+    g_free(t->name);
+    g_free(t);
   }
 }
 
@@ -124,7 +127,7 @@ void owl_select_remove_io_dispatch(const owl_io_dispatch *in)
         owl_list_remove_element(dl, elt);
         if (d->destroy)
           d->destroy(d);
-        owl_free(d);
+        g_free(d);
       }
     }
   }
@@ -155,7 +158,7 @@ void owl_select_io_dispatch_gc(void)
  */
 const owl_io_dispatch *owl_select_add_io_dispatch(int fd, int mode, void (*cb)(const owl_io_dispatch *, void *), void (*destroy)(const owl_io_dispatch *), void *data)
 {
-  owl_io_dispatch *d = owl_malloc(sizeof(owl_io_dispatch));
+  owl_io_dispatch *d = g_new(owl_io_dispatch, 1);
   owl_list *dl = owl_global_get_io_dispatch_list(&g);
 
   d->fd = fd;
@@ -241,7 +244,7 @@ int owl_select_aim_hack(fd_set *rfds, fd_set *wfds)
 
   max_fd = 0;
   sess = owl_global_get_aimsess(&g);
-  for (cur = sess->connlist, max_fd = 0; cur; cur = cur->next) {
+  for (cur = sess->connlist; cur; cur = cur->next) {
     if (cur->fd != -1) {
       FD_SET(cur->fd, rfds);
       if (cur->status & AIM_CONN_STATUS_INPROGRESS) {
@@ -295,7 +298,7 @@ void owl_select_handle_intr(sigset_t *restore)
 
 owl_ps_action *owl_select_add_pre_select_action(int (*cb)(owl_ps_action *, void *), void (*destroy)(owl_ps_action *), void *data)
 {
-  owl_ps_action *a = owl_malloc(sizeof(owl_ps_action));
+  owl_ps_action *a = g_new(owl_ps_action, 1);
   owl_list *psa_list = owl_global_get_psa_list(&g);
   a->needs_gc = 0;
   a->callback = cb;
@@ -319,7 +322,7 @@ void owl_select_psa_gc(void)
       if (a->destroy) {
         a->destroy(a);
       }
-      owl_free(a);
+      g_free(a);
     }
   }
 }
@@ -434,4 +437,19 @@ void owl_select(void)
     }
     owl_select_io_dispatch(&r, &w, &e, max_fd);
   }
+}
+
+void owl_select_run_loop(void)
+{
+  loop_active = 1;
+  while (loop_active) {
+    owl_perl_savetmps();
+    owl_select();
+    owl_perl_freetmps();
+  }
+}
+
+void owl_select_quit_loop(void)
+{
+  loop_active = 0;
 }

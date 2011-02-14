@@ -4,7 +4,7 @@
 /* Assumes owenership of one existing ref on `obj`*/
 void owl_style_create_perl(owl_style *s, const char *name, SV *obj)
 {
-  s->name=owl_strdup(name);
+  s->name=g_strdup(name);
   s->perlobj = obj;
 }
 
@@ -44,6 +44,7 @@ void owl_style_get_formattext(const owl_style *s, owl_fmtext *fm, const owl_mess
   const char *body;
   char *indent;
   int curlen;
+  owl_fmtext with_tabs;
 
   SV *sv = NULL;
   
@@ -63,18 +64,22 @@ void owl_style_get_formattext(const owl_style *s, owl_fmtext *fm, const owl_mess
   }
 
   /* indent and ensure ends with a newline */
-  indent=owl_malloc(strlen(body)+(owl_text_num_lines(body))*OWL_TAB+10);
-  owl_text_indent(indent, body, OWL_TAB);
+  indent = owl_text_indent(body, OWL_TAB);
   curlen = strlen(indent);
   if (curlen==0 || indent[curlen-1] != '\n') {
     indent[curlen] = '\n';
     indent[curlen+1] = '\0';
   }
 
+  owl_fmtext_init_null(&with_tabs);
   /* fmtext_append.  This needs to change */
-  owl_fmtext_append_ztext(fm, indent);
+  owl_fmtext_append_ztext(&with_tabs, indent);
+  /* Expand tabs, taking the indent into account. Otherwise, tabs from the
+   * style display incorrectly due to our own indent. */
+  owl_fmtext_expand_tabs(&with_tabs, fm, OWL_TAB_WIDTH - OWL_TAB);
+  owl_fmtext_cleanup(&with_tabs);
 
-  owl_free(indent);
+  g_free(indent);
   if(sv)
     SvREFCNT_dec(sv);
 }
@@ -88,12 +93,12 @@ int owl_style_validate(const owl_style *s) {
 
 void owl_style_cleanup(owl_style *s)
 {
-  if (s->name) owl_free(s->name);
+  if (s->name) g_free(s->name);
   SvREFCNT_dec(s->perlobj);
 }
 
 void owl_style_delete(owl_style *s)
 {
   owl_style_cleanup(s);
-  owl_free(s);
+  g_free(s);
 }

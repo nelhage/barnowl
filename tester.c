@@ -21,6 +21,8 @@ int owl_filter_regtest(void);
 int owl_obarray_regtest(void);
 int owl_editwin_regtest(void);
 int owl_list_regtest(void);
+int owl_fmtext_regtest(void);
+int owl_smartfilter_regtest(void);
 
 extern void owl_perl_xs_init(pTHX);
 
@@ -104,9 +106,10 @@ int owl_regtest(void) {
   numfailures += owl_dict_regtest();
   numfailures += owl_variable_regtest();
   numfailures += owl_filter_regtest();
-  numfailures += owl_obarray_regtest();
   numfailures += owl_editwin_regtest();
   numfailures += owl_list_regtest();
+  numfailures += owl_fmtext_regtest();
+  numfailures += owl_smartfilter_regtest();
   if (numfailures) {
       fprintf(stderr, "# *** WARNING: %d failures total\n", numfailures);
   }
@@ -127,32 +130,38 @@ int owl_util_regtest(void)
 
   printf("# BEGIN testing owl_util\n");
 
-  FAIL_UNLESS("owl_util_substitute 1",
-	      !strcmp("foo", owl_text_substitute("foo", "", "Y")));
-  FAIL_UNLESS("owl_text_substitute 2",
-	      !strcmp("fYZYZ", owl_text_substitute("foo", "o", "YZ")));
-  FAIL_UNLESS("owl_text_substitute 3",
-	      !strcmp("foo", owl_text_substitute("fYZYZ", "YZ", "o")));
-  FAIL_UNLESS("owl_text_substitute 4",
-	      !strcmp("/u/foo/meep", owl_text_substitute("~/meep", "~", "/u/foo")));
+#define CHECK_STR_AND_FREE(desc, expected, expr)         \
+    do {                                                 \
+      char *__value = (expr);                            \
+      FAIL_UNLESS((desc), !strcmp((expected), __value)); \
+      g_free(__value);                                 \
+    } while (0)
+
+  CHECK_STR_AND_FREE("owl_util_substitute 1", "foo",
+	             owl_text_substitute("foo", "", "Y"));
+  CHECK_STR_AND_FREE("owl_text_substitute 2", "fYZYZ",
+                     owl_text_substitute("foo", "o", "YZ"));
+  CHECK_STR_AND_FREE("owl_text_substitute 3", "foo",
+                     owl_text_substitute("fYZYZ", "YZ", "o"));
+  CHECK_STR_AND_FREE("owl_text_substitute 4", "/u/foo/meep",
+                     owl_text_substitute("~/meep", "~", "/u/foo"));
 
   FAIL_UNLESS("skiptokens 1", 
 	      !strcmp("bar quux", skiptokens("foo bar quux", 1)));
   FAIL_UNLESS("skiptokens 2", 
 	      !strcmp("meep", skiptokens("foo 'bar quux' meep", 2)));
 
-  FAIL_UNLESS("expand_tabs 1",
-              !strcmp("        hi", owl_text_expand_tabs("\thi")));
+  CHECK_STR_AND_FREE("expand_tabs 1", "        hi", owl_text_expand_tabs("\thi"));
 
-  FAIL_UNLESS("expand_tabs 2",
-              !strcmp("        hi\nword    tab", owl_text_expand_tabs("\thi\nword\ttab")));
+  CHECK_STR_AND_FREE("expand_tabs 2", "        hi\nword    tab",
+                     owl_text_expand_tabs("\thi\nword\ttab"));
 
-  FAIL_UNLESS("expand_tabs 3",
-              !strcmp("                2 tabs", owl_text_expand_tabs("\t\t2 tabs")));
-  FAIL_UNLESS("expand_tabs 4",
-	      !strcmp("α       ααααααα!        ", owl_text_expand_tabs("α\tααααααα!\t")));
-  FAIL_UNLESS("expand_tabs 5",
-	      !strcmp("Ａ      ＡＡＡ!!        ", owl_text_expand_tabs("Ａ\tＡＡＡ!!\t")));
+  CHECK_STR_AND_FREE("expand_tabs 3", "                2 tabs",
+                     owl_text_expand_tabs("\t\t2 tabs"));
+  CHECK_STR_AND_FREE("expand_tabs 4", "α       ααααααα!        ",
+                     owl_text_expand_tabs("α\tααααααα!\t"));
+  CHECK_STR_AND_FREE("expand_tabs 5", "Ａ      ＡＡＡ!!        ",
+                     owl_text_expand_tabs("Ａ\tＡＡＡ!!\t"));
 
   FAIL_UNLESS("skiptokens 1",
               !strcmp("world", skiptokens("hello world", 1)));
@@ -168,6 +177,51 @@ int owl_util_regtest(void)
 
   FAIL_UNLESS("skiptokens 5",
               !strcmp("c d e", skiptokens("a \"'\" c d e", 2)));
+
+#define CHECK_QUOTING(desc, unquoted, quoted)		\
+  do {							\
+      int __argc;					\
+      char *__quoted = owl_arg_quote(unquoted);		\
+      char **__argv;					\
+      FAIL_UNLESS(desc, !strcmp(quoted, __quoted));	\
+      __argv = owl_parseline(__quoted, &__argc);	\
+      FAIL_UNLESS(desc " - arg count", __argc == 1);	\
+      FAIL_UNLESS(desc " - null-terminated",		\
+		  __argv[__argc] == NULL);		\
+      FAIL_UNLESS(desc " - parsed",			\
+		  !strcmp(__argv[0], unquoted));	\
+      owl_parse_delete(__argv, __argc);			\
+      g_free(__quoted);				\
+    } while (0)
+
+  CHECK_QUOTING("boring text", "mango", "mango");
+  CHECK_QUOTING("spaces", "mangos are tasty", "'mangos are tasty'");
+  CHECK_QUOTING("single quotes", "mango's", "\"mango's\"");
+  CHECK_QUOTING("double quotes", "he said \"mangos are tasty\"",
+		"'he said \"mangos are tasty\"'");
+  CHECK_QUOTING("both quotes",
+		"he said \"mango's are tasty even when you put in "
+		"a random apostrophe\"",
+		"\"he said \"'\"'\"mango's are tasty even when you put in "
+		"a random apostrophe\"'\"'\"\"");
+  CHECK_QUOTING("quote monster", "'\"\"'\"'''\"",
+		"\""
+		"'"
+		"\"'\"'\""
+		"\"'\"'\""
+		"'"
+		"\"'\"'\""
+		"'"
+		"'"
+		"'"
+		"\"'\"'\""
+		"\"");
+
+  GString *g = g_string_new("");
+  owl_string_appendf_quoted(g, "%q foo %q%q %s %", "hello", "world is", "can't");
+  FAIL_UNLESS("owl_string_appendf",
+              !strcmp(g_string_free(g, false),
+                      "hello foo 'world is'\"can't\" %s %"));
 
   /* if (numfailed) printf("*** WARNING: failures encountered with owl_util\n"); */
   printf("# END testing owl_util (%d failures)\n", numfailed);
@@ -204,7 +258,7 @@ int owl_dict_regtest(void) {
   FAIL_UNLESS("get_keys result val",0==strcmp("b",owl_list_get_element(&l,1)));
   FAIL_UNLESS("get_keys result val",0==strcmp("c",owl_list_get_element(&l,2)));
 
-  owl_list_cleanup(&l, owl_free);
+  owl_list_cleanup(&l, g_free);
   owl_dict_cleanup(&d, NULL);
 
   /*  if (numfailed) printf("*** WARNING: failures encountered with owl_dict\n"); */
@@ -304,8 +358,6 @@ int owl_filter_regtest(void) {
   owl_message *m = owl_message_new();;
   owl_filter *f1, *f2, *f3, *f4, *f5;
 
-  owl_dict_create(&g.filters);
-  g.filterlist = NULL;
   owl_message_init(m);
   owl_message_set_type_zephyr(m);
   owl_message_set_direction_in(m);
@@ -368,42 +420,15 @@ int owl_filter_regtest(void) {
   return 0;
 }
 
-
-int owl_obarray_regtest(void) {
-  int numfailed = 0;
-  const char *p,*p2;
-
-  owl_obarray oa;
-  owl_obarray_init(&oa);
-
-  printf("# BEGIN testing owl_obarray\n");
-
-  p = owl_obarray_insert(&oa, "test");
-  FAIL_UNLESS("returned string is equal", p && !strcmp(p, "test"));
-  p2 = owl_obarray_insert(&oa, "test");
-  FAIL_UNLESS("returned string is equal", p2 && !strcmp(p2, "test"));
-  FAIL_UNLESS("returned the same string", p2 && p == p2);
-
-  p = owl_obarray_insert(&oa, "test2");
-  FAIL_UNLESS("returned string is equal", p && !strcmp(p, "test2"));
-  p2 = owl_obarray_find(&oa, "test2");
-  FAIL_UNLESS("returned the same string", p2 && !strcmp(p2, "test2"));
-
-  p = owl_obarray_find(&oa, "nothere");
-  FAIL_UNLESS("Didn't find a string that isn't there", p == NULL);
-
-  printf("# END testing owl_obarray (%d failures)\n", numfailed);
-
-  return numfailed;
-}
-
 int owl_editwin_regtest(void) {
   int numfailed = 0;
   const char *p;
+  owl_editwin *oe;
+  const char *autowrap_string = "we feel our owls should live "
+                                "closer to our ponies.";
 
   printf("# BEGIN testing owl_editwin\n");
 
-  owl_editwin *oe;
   oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
 
   /* TODO: make the strings a little more lenient w.r.t trailing whitespace */
@@ -418,7 +443,7 @@ int owl_editwin_regtest(void) {
 							    "\n"
 							    "blah"));
 
-  owl_editwin_delete(oe); oe = NULL;
+  owl_editwin_unref(oe); oe = NULL;
   oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
 
   /* check that lines ending with ". " correctly fill */
@@ -431,7 +456,63 @@ int owl_editwin_regtest(void) {
 							    "\n"
 							    "blah"));
 
-  owl_editwin_delete(oe); oe = NULL;
+  owl_editwin_unref(oe); oe = NULL;
+
+  /* Test owl_editwin_move_to_beginning_of_line. */
+  oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
+  owl_editwin_insert_string(oe, "\n");
+  owl_editwin_insert_string(oe, "12345678\n");
+  owl_editwin_insert_string(oe, "\n");
+  owl_editwin_insert_string(oe, "abcdefg\n");
+  owl_editwin_move_to_top(oe);
+  FAIL_UNLESS("already at beginning of line",
+	      owl_editwin_move_to_beginning_of_line(oe) == 0);
+  owl_editwin_line_move(oe, 1);
+  owl_editwin_point_move(oe, 5);
+  FAIL_UNLESS("find beginning of line after empty first line",
+	      owl_editwin_move_to_beginning_of_line(oe) == -5);
+  owl_editwin_line_move(oe, 1);
+  FAIL_UNLESS("find beginning empty middle line",
+	      owl_editwin_move_to_beginning_of_line(oe) == 0);
+  owl_editwin_line_move(oe, 1);
+  owl_editwin_point_move(oe, 2);
+  FAIL_UNLESS("find beginning of line after empty middle line",
+	      owl_editwin_move_to_beginning_of_line(oe) == -2);
+  owl_editwin_unref(oe); oe = NULL;
+
+  /* Test automatic line-wrapping. */
+  owl_global_set_edit_maxwrapcols(&g, 10);
+  oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
+  for (p = autowrap_string; *p; p++) {
+    owl_input j;
+    j.ch = *p;
+    j.uch = *p; /* Assuming ASCII. */
+    owl_editwin_process_char(oe, j);
+  }
+  p = owl_editwin_get_text(oe);
+  FAIL_UNLESS("text was automatically wrapped",
+	      p && !strcmp(p, "we feel\n"
+			   "our owls\n"
+			   "should\n"
+			   "live\n"
+			   "closer to\n"
+			   "our\n"
+			   "ponies."));
+  owl_editwin_unref(oe); oe = NULL;
+  owl_global_set_edit_maxwrapcols(&g, 70);
+
+  /* Test owl_editwin_current_column. */
+  oe = owl_editwin_new(NULL, 80, 80, OWL_EDITWIN_STYLE_MULTILINE, NULL);
+  FAIL_UNLESS("initial column zero", owl_editwin_current_column(oe) == 0);
+  owl_editwin_insert_string(oe, "abcdef");
+  FAIL_UNLESS("simple insert", owl_editwin_current_column(oe) == 6);
+  owl_editwin_insert_string(oe, "\t");
+  FAIL_UNLESS("insert tabs", owl_editwin_current_column(oe) == 8);
+  owl_editwin_insert_string(oe, "123\n12\t3");
+  FAIL_UNLESS("newline with junk", owl_editwin_current_column(oe) == 9);
+  owl_editwin_move_to_beginning_of_line(oe);
+  FAIL_UNLESS("beginning of line", owl_editwin_current_column(oe) == 0);
+  owl_editwin_unref(oe); oe = NULL;
 
   printf("# END testing owl_editwin (%d failures)\n", numfailed);
 
@@ -483,3 +564,280 @@ int owl_list_regtest(void) {
   return numfailed;
 }
 
+
+int owl_fmtext_regtest(void) {
+  int numfailed = 0;
+  int start, end;
+  owl_fmtext fm1;
+  owl_fmtext fm2;
+  owl_regex re;
+  char *str;
+
+  printf("# BEGIN testing owl_fmtext\n");
+
+  owl_fmtext_init_null(&fm1);
+  owl_fmtext_init_null(&fm2);
+
+  /* Verify text gets correctly appended. */
+  owl_fmtext_append_normal(&fm1, "1234567898");
+  owl_fmtext_append_fmtext(&fm2, &fm1);
+  FAIL_UNLESS("string lengths correct",
+              owl_fmtext_num_bytes(&fm2) == strlen(owl_fmtext_get_text(&fm2)));
+
+  /* Test owl_fmtext_num_lines. */
+  owl_fmtext_clear(&fm1);
+  FAIL_UNLESS("empty line correct", owl_fmtext_num_lines(&fm1) == 0);
+  owl_fmtext_append_normal(&fm1, "12345\n67898");
+  FAIL_UNLESS("trailing chars correct", owl_fmtext_num_lines(&fm1) == 2);
+  owl_fmtext_append_normal(&fm1, "\n");
+  FAIL_UNLESS("trailing newline correct", owl_fmtext_num_lines(&fm1) == 2);
+  owl_fmtext_append_bold(&fm1, "");
+  FAIL_UNLESS("trailing attributes correct", owl_fmtext_num_lines(&fm1) == 2);
+
+  /* Test owl_fmtext_truncate_lines */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "0\n1\n2\n3\n4\n");
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_lines(&fm1, 1, 3, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("lines corrected truncated",
+	      str && !strcmp(str, "1\n2\n3\n"));
+  g_free(str);
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_lines(&fm1, 1, 5, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("lines corrected truncated",
+	      str && !strcmp(str, "1\n2\n3\n4\n"));
+  g_free(str);
+
+  /* Test owl_fmtext_truncate_cols. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123456789012345\n");
+  owl_fmtext_append_normal(&fm1, "123456789\n");
+  owl_fmtext_append_normal(&fm1, "1234567890\n");
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_cols(&fm1, 4, 9, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("columns correctly truncated",
+              str && !strcmp(str, "567890"
+                                  "56789\n"
+                                  "567890"));
+  g_free(str);
+
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "12\t1234");
+  owl_fmtext_append_bold(&fm1, "56\n");
+  owl_fmtext_append_bold(&fm1, "12345678\t\n");
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_truncate_cols(&fm1, 4, 13, &fm2);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("columns correctly truncated",
+              str && !strcmp(str, "    123456"
+                                  "5678      "));
+  g_free(str);
+
+  /* Test owl_fmtext_expand_tabs. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "12\t1234");
+  owl_fmtext_append_bold(&fm1, "567\t1\n12345678\t1");
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_expand_tabs(&fm1, &fm2, 0);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("no tabs remaining", strchr(str, '\t') == NULL);
+  FAIL_UNLESS("tabs corrected expanded",
+              str && !strcmp(str, "12      1234567 1\n"
+                                  "12345678        1"));
+  g_free(str);
+
+  owl_fmtext_clear(&fm2);
+  owl_fmtext_expand_tabs(&fm1, &fm2, 1);
+  str = owl_fmtext_print_plain(&fm2);
+  FAIL_UNLESS("no tabs remaining", strchr(str, '\t') == NULL);
+  FAIL_UNLESS("tabs corrected expanded",
+              str && !strcmp(str, "12     1234567 1\n"
+                                  "12345678       1"));
+  g_free(str);
+
+  /* Test owl_fmtext_search. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123123123123");
+  owl_regex_create(&re, "12");
+  {
+    int count = 0, offset;
+    offset = owl_fmtext_search(&fm1, &re, 0);
+    while (offset >= 0) {
+      FAIL_UNLESS("search matches",
+		  !strncmp("12", owl_fmtext_get_text(&fm1) + offset, 2));
+      count++;
+      offset = owl_fmtext_search(&fm1, &re, offset+1);
+    }
+    FAIL_UNLESS("exactly four matches", count == 4);
+  }
+  owl_regex_cleanup(&re);
+
+  /* Test owl_fmtext_line_number. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123\n456\n");
+  owl_fmtext_append_bold(&fm1, "");
+  FAIL_UNLESS("lines start at 0", 0 == owl_fmtext_line_number(&fm1, 0));
+  FAIL_UNLESS("trailing formatting characters part of false line",
+	      2 == owl_fmtext_line_number(&fm1, owl_fmtext_num_bytes(&fm1)));
+  owl_regex_create_quoted(&re, "456");
+  FAIL_UNLESS("correctly find second line (line 1)",
+	      1 == owl_fmtext_line_number(&fm1, owl_fmtext_search(&fm1, &re, 0)));
+  owl_regex_cleanup(&re);
+
+  /* Test owl_fmtext_line_extents. */
+  owl_fmtext_clear(&fm1);
+  owl_fmtext_append_normal(&fm1, "123\n456\n789");
+  owl_fmtext_line_extents(&fm1, 1, &start, &end);
+  FAIL_UNLESS("line contents",
+	      !strncmp("456\n", owl_fmtext_get_text(&fm1)+start, end-start));
+  owl_fmtext_line_extents(&fm1, 2, &start, &end);
+  FAIL_UNLESS("point to end of buffer", end == owl_fmtext_num_bytes(&fm1));
+
+  owl_fmtext_cleanup(&fm1);
+  owl_fmtext_cleanup(&fm2);
+
+  printf("# END testing owl_fmtext (%d failures)\n", numfailed);
+
+  return numfailed;
+}
+
+static int owl_smartfilter_test_equals(const char *filtname, const char *expected) {
+  owl_filter *f = NULL;
+  char *filtstr = NULL;
+  int failed = 0;
+  f = owl_global_get_filter(&g, filtname);
+  if (f == NULL) {
+    printf("not ok filter missing: %s\n", filtname);
+    failed = 1;
+    goto out;
+  }
+
+  /* TODO: Come up with a better way to test this. */
+  filtstr = owl_filter_print(f);
+  if (strcmp(expected, filtstr)) {
+    printf("not ok filter incorrect: |%s| instead of |%s|\n",
+	   filtstr, expected);
+    failed = 1;
+    goto out;
+  }
+
+ out:
+  g_free(filtstr);
+  return failed;
+}
+
+static int owl_classinstfilt_test(const char *c, const char *i, int related, const char *expected) {
+  char *filtname = NULL;
+  int failed = 0;
+
+  filtname = owl_function_classinstfilt(c, i, related);
+  if (filtname == NULL) {
+    printf("not ok null filtname: %s %s %s\n", c, i ? i : "(null)",
+	   related ? "related" : "not related");
+    failed = 1;
+    goto out;
+  }
+  if (owl_smartfilter_test_equals(filtname, expected)) {
+    failed = 1;
+    goto out;
+  }
+ out:
+  if (!failed) {
+    printf("ok %s\n", filtname);
+  }
+  if (filtname)
+    owl_global_remove_filter(&g, filtname);
+  g_free(filtname);
+  return failed;
+}
+
+static int owl_zuserfilt_test(const char *longuser, const char *expected) {
+  char *filtname = NULL;
+  int failed = 0;
+
+  filtname = owl_function_zuserfilt(longuser);
+  if (filtname == NULL) {
+    printf("not ok null filtname: %s\n", longuser);
+    failed = 1;
+    goto out;
+  }
+  if (owl_smartfilter_test_equals(filtname, expected)) {
+    failed = 1;
+    goto out;
+  }
+ out:
+  if (!failed) {
+    printf("ok %s\n", filtname);
+  }
+  if (filtname)
+    owl_global_remove_filter(&g, filtname);
+  g_free(filtname);
+  return failed;
+}
+
+
+int owl_smartfilter_regtest(void) {
+  int numfailed = 0;
+
+  printf("# BEGIN testing owl_smartfilter\n");
+
+  /* Check classinst making. */
+
+#define TEST_CLASSINSTFILT(c, i, r, e) do {		\
+    numtests++;						\
+    numfailed += owl_classinstfilt_test(c, i, r, e);	\
+  } while (0)
+  TEST_CLASSINSTFILT("message", NULL, false,
+		     "class ^message$\n");
+  TEST_CLASSINSTFILT("message", NULL, true,
+		     "class ^(un)*message(\\.d)*$\n");
+  TEST_CLASSINSTFILT("message", "personal", false,
+		     "class ^message$ and instance ^personal$\n");
+  TEST_CLASSINSTFILT("message", "personal", true,
+		     "class ^(un)*message(\\.d)*$ and ( instance ^(un)*personal(\\.d)*$ )\n");
+
+  TEST_CLASSINSTFILT("message", "evil\tinstance", false,
+		     "class ^message$ and instance '^evil\tinstance$'\n");
+  TEST_CLASSINSTFILT("message", "evil instance", false,
+		     "class ^message$ and instance '^evil instance$'\n");
+  TEST_CLASSINSTFILT("message", "evil'instance", false,
+		     "class ^message$ and instance \"^evil'instance$\"\n");
+  TEST_CLASSINSTFILT("message", "evil\"instance", false,
+		     "class ^message$ and instance '^evil\"instance$'\n");
+  TEST_CLASSINSTFILT("message", "evil$instance", false,
+		     "class ^message$ and instance ^evil\\$instance$\n");
+
+#define TEST_ZUSERFILT(l, e) do {			\
+    numtests++;						\
+    numfailed += owl_zuserfilt_test(l, e);		\
+  } while (0)
+  TEST_ZUSERFILT("user",
+		 "( type ^zephyr$ and filter personal and "
+		 "( ( direction ^in$ and sender "
+		 "^user$"
+		 " ) or ( direction ^out$ and recipient "
+		 "^user$"
+		 " ) ) ) or ( ( class ^login$ ) and ( sender "
+		 "^user$"
+		 " ) )\n");
+  TEST_ZUSERFILT("very evil\t.user",
+		 "( type ^zephyr$ and filter personal and "
+		 "( ( direction ^in$ and sender "
+		 "'^very evil\t\\.user$'"
+		 " ) or ( direction ^out$ and recipient "
+		 "'^very evil\t\\.user$'"
+		 " ) ) ) or ( ( class ^login$ ) and ( sender "
+		 "'^very evil\t\\.user$'"
+		 " ) )\n");
+
+  printf("# END testing owl_smartfilter (%d failures)\n", numfailed);
+
+  return numfailed;
+}

@@ -16,7 +16,7 @@
 
 int owl_dict_create(owl_dict *d) {
   d->size=0;
-  d->els=owl_malloc(INITSIZE*sizeof(owl_dict_el));
+  d->els=g_new(owl_dict_el, INITSIZE);
   d->avail=INITSIZE;
   if (d->els==NULL) return(-1);
   return(0);
@@ -64,7 +64,7 @@ int owl_dict_get_keys(const owl_dict *d, owl_list *l) {
   char *dupk;
   if (owl_list_create(l)) return(-1);
   for (i=0; i<d->size; i++) {
-    if ((dupk = owl_strdup(d->els[i].k)) == NULL) return(-1);
+    if ((dupk = g_strdup(d->els[i].k)) == NULL) return(-1);
     owl_list_append_element(l, dupk);
   }
   return(0);
@@ -95,11 +95,11 @@ int owl_dict_insert_element(owl_dict *d, const char *k, void *v, void (*delete_o
   } else {
     if (d->size + 1 > d->avail) {
       int avail = MAX(d->avail * GROWBY, d->size + 1);
-      d->els = owl_realloc(d->els, avail * sizeof(owl_dict_el));
+      d->els = g_renew(owl_dict_el, d->els, avail);
       d->avail = avail;
       if (d->els==NULL) return(-1);
     }
-    if ((dupk = owl_strdup(k)) == NULL) return(-1);
+    if ((dupk = g_strdup(k)) == NULL) return(-1);
     if (pos!=d->size) {
       /* shift forward to leave us a slot */
       memmove(d->els+pos+1, d->els+pos, 
@@ -120,7 +120,7 @@ void *owl_dict_remove_element(owl_dict *d, const char *k) {
   void *v;
   found = _owl_dict_find_pos(d, k, &pos);
   if (!found) return(NULL);
-  owl_free(d->els[pos].k);
+  g_free(d->els[pos].k);
   v = d->els[pos].v;
   for (i=pos; i<d->size-1; i++) {
     d->els[i]=d->els[i+1];
@@ -135,9 +135,9 @@ void owl_dict_cleanup(owl_dict *d, void (*elefree)(void *))
   int i;
 
   for (i=0; i<d->size; i++) {
-    owl_free(d->els[i].k);
+    g_free(d->els[i].k);
     if (elefree) (elefree)(d->els[i].v);
   }
-  if (d->els) owl_free(d->els);
+  if (d->els) g_free(d->els);
 }
 

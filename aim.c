@@ -133,12 +133,11 @@ int owl_aim_login(const char *screenname, const char *password)
   aim_tx_setenqueue(sess, AIM_TX_IMMEDIATE, NULL);
   
   /* this will leak, I know and just don't care right now */
-  priv=owl_malloc(sizeof(struct owlfaim_priv));
-  memset(priv, 0, sizeof(struct owlfaim_priv));
+  priv=g_new0(struct owlfaim_priv, 1);
 
-  priv->screenname = owl_strdup(screenname);
-  priv->password = owl_strdup(password);
-  priv->server = owl_strdup(FAIM_LOGIN_SERVER);
+  priv->screenname = g_strdup(screenname);
+  priv->password = g_strdup(password);
+  priv->server = g_strdup(FAIM_LOGIN_SERVER);
   sess->aux_data = priv;
 
   conn=aim_newconn(sess, AIM_CONN_TYPE_AUTH, priv->server ? priv->server : FAIM_LOGIN_SERVER);
@@ -183,7 +182,7 @@ int owl_aim_login(const char *screenname, const char *password)
   aim_request_login(sess, conn, screenname);
   owl_function_debugmsg("owl_aim_login: connecting");
 
-  g.aim_nop_timer = owl_select_add_timer(30, 30, owl_aim_send_nop, NULL, NULL);
+  g.aim_nop_timer = owl_select_add_timer("owl_aim_send_nop", 30, 30, owl_aim_send_nop, NULL, NULL);
 
   return(0);
 }
@@ -201,15 +200,16 @@ void owl_aim_successful_login(const char *screenname)
   owl_global_set_aimloggedin(&g, screenname);
   owl_global_set_doaimevents(&g); /* this should already be on */
   owl_function_makemsg("%s logged in", screenname);
-  buff=owl_sprintf("Logged in to AIM as %s", screenname);
+  buff=g_strdup_printf("Logged in to AIM as %s", screenname);
   owl_function_adminmsg("", buff);
-  owl_free(buff);
+  g_free(buff);
 
   owl_function_debugmsg("Successful AIM login for %s", screenname);
 
   /* start the ingorelogin timer */
   owl_global_set_ignore_aimlogin(&g);
-  owl_select_add_timer(owl_global_get_aim_ignorelogin_timer(&g),
+  owl_select_add_timer("owl_aim_unset_ignorelogin",
+                       owl_global_get_aim_ignorelogin_timer(&g),
                        0, owl_aim_unset_ignorelogin, NULL, NULL);
 
   /* aim_ssi_setpresence(owl_global_get_aimsess(&g), 0x00000400); */
@@ -291,7 +291,7 @@ static int owl_aim_do_send(const char *to, const char *msg, int flags)
 
   ret=aim_im_sendch1_ext(owl_global_get_aimsess(&g), &args);
 
-  owl_free(encoded);
+  g_free(encoded);
 
   return(ret);
 }
@@ -345,7 +345,7 @@ int owl_aim_set_awaymsg(const char *msg)
   char *foo;
   /* there is a max away message lentgh we should check against */
 
-  foo=owl_strdup(msg);
+  foo=g_strdup(msg);
   len=strlen(foo);
   if (len>500) {
     foo[500]='\0';
@@ -355,7 +355,7 @@ int owl_aim_set_awaymsg(const char *msg)
   aim_locate_setprofile(owl_global_get_aimsess(&g),
 			NULL, NULL, 0,
 			"us-ascii", foo, len);
-  owl_free(foo);
+  g_free(foo);
 
   /*
   aim_bos_setprofile(owl_global_get_aimsess(&g),
@@ -433,7 +433,7 @@ char *owl_aim_normalize_screenname(const char *in)
   int i, j, k;
 
   j=strlen(in);
-  out=owl_malloc(j+30);
+  out=g_new(char, j+30);
   k=0;
   for (i=0; i<j; i++) {
     if (in[i]!=' ') {
@@ -1024,7 +1024,7 @@ static int faimtest_parse_incoming_im_chan1(aim_session_t *sess, aim_conn_t *con
   char *realmsg = NULL;
 
   if (!args->msg) {
-    realmsg = owl_strdup("");
+    realmsg = g_strdup("");
   } else if (args->icbmflags & AIM_IMFLAGS_UNICODE) {
     realmsg = g_convert(args->msg, args->msglen, "UTF-8", "UCS-2BE",
                         NULL, NULL, NULL);
@@ -1032,11 +1032,11 @@ static int faimtest_parse_incoming_im_chan1(aim_session_t *sess, aim_conn_t *con
     realmsg = g_convert(args->msg, args->msglen, "UTF-8", "ISO-8859-1",
                         NULL, NULL, NULL);
   } else {
-    realmsg = owl_strdup(args->msg);
+    realmsg = g_strdup(args->msg);
   }
 
   if (!realmsg) {
-    realmsg = owl_strdup("[Error decoding incoming IM]");
+    realmsg = g_strdup("[Error decoding incoming IM]");
   }
 
   owl_function_debugmsg("faimtest_parse_incoming_im_chan1: message from: %s", userinfo->sn?userinfo->sn:"");
@@ -1053,9 +1053,9 @@ static int faimtest_parse_incoming_im_chan1(aim_session_t *sess, aim_conn_t *con
 			 0);
   if (args->icbmflags & AIM_IMFLAGS_AWAY) owl_message_set_attribute(m, "isauto", "");
   owl_global_messagequeue_addmsg(&g, m);
-  owl_free(stripmsg);
-  owl_free(wrapmsg);
-  owl_free(nz_screenname);
+  g_free(stripmsg);
+  g_free(wrapmsg);
+  g_free(nz_screenname);
 
   return(1);
 
@@ -1081,7 +1081,7 @@ static int faimtest_parse_incoming_im_chan1(aim_session_t *sess, aim_conn_t *con
     owl_function_debugmsg("faimtest_parse_incoming_im_chan1: icbm: their icon: iconstamp = %ld, iconlen = 0x%08x, iconsum = 0x%04x\n", args->iconstamp, args->iconlen, args->iconsum);
   }
 
-  owl_free(realmsg);
+  g_free(realmsg);
 
   return(1);
 }
@@ -1194,7 +1194,7 @@ static int faimtest_parse_oncoming(aim_session_t *sess, aim_frame_t *fr, ...)
   
   owl_function_debugmsg("parse_oncoming sn: %s idle: %i", userinfo->sn, userinfo->idletime);
     
-  owl_free(nz_screenname);
+  g_free(nz_screenname);
   
   /*
     printf("%ld  %s is now online (flags: %04x = %s%s%s%s%s%s%s%s) (caps = %s = 0x%08lx)\n",
@@ -1226,7 +1226,7 @@ static int faimtest_parse_offgoing(aim_session_t *sess, aim_frame_t *fr, ...)
 
   nz_screenname=owl_aim_normalize_screenname(userinfo->sn);
   owl_buddylist_offgoing(owl_global_get_buddylist(&g), nz_screenname);
-  owl_free(nz_screenname);
+  g_free(nz_screenname);
 
   if (userinfo->present & AIM_USERINFO_PRESENT_IDLE) {
     owl_function_debugmsg("parse_offgoing sn: %s idle time %i", userinfo->sn, userinfo->idletime);

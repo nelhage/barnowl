@@ -78,7 +78,7 @@ void owl_log_zephyr(const owl_message *m, FILE *file) {
     fprintf(file, "Time: %s Host: %s\n", owl_message_get_timestr(m), owl_message_get_hostname(m));
     fprintf(file, "From: %s <%s>\n\n", owl_message_get_zsig(m), tmp);
     fprintf(file, "%s\n\n", owl_message_get_body(m));
-    owl_free(tmp);
+    g_free(tmp);
 }
 
 void owl_log_aim(const owl_message *m, FILE *file) {
@@ -127,6 +127,7 @@ void owl_log_outgoing(const owl_message *m)
 {
   char filename[MAXPATHLEN], *logpath;
   char *to, *temp;
+  GList *cc;
 
   /* expand ~ in path names */
   logpath = owl_text_substitute(owl_global_get_logpath(&g), "~", owl_global_get_homedir(&g));
@@ -134,39 +135,39 @@ void owl_log_outgoing(const owl_message *m)
   /* Figure out what path to log to */
   if (owl_message_is_type_zephyr(m)) {
     /* If this has CC's, do all but the "recipient" which we'll do below */
-    to = owl_message_get_cc_without_recipient(m);
-    if (to != NULL) {
-      temp = strtok(to, " ");
-      while (temp != NULL) {
-          temp = short_zuser(temp);
-          snprintf(filename, MAXPATHLEN, "%s/%s", logpath, temp);
-          owl_log_append(m, filename);
-          temp = strtok(NULL, " ");
-      }
-      owl_free(to);
+    cc = owl_message_get_cc_without_recipient(m);
+    while (cc != NULL) {
+      temp = short_zuser(cc->data);
+      snprintf(filename, MAXPATHLEN, "%s/%s", logpath, temp);
+      owl_log_append(m, filename);
+
+      g_free(temp);
+      g_free(cc->data);
+      cc = g_list_delete_link(cc, cc);
     }
+
     to = short_zuser(owl_message_get_recipient(m));
   } else if (owl_message_is_type_jabber(m)) {
-    to = owl_sprintf("jabber:%s", owl_message_get_recipient(m));
+    to = g_strdup_printf("jabber:%s", owl_message_get_recipient(m));
     owl_text_tr(to, '/', '_');
   } else if (owl_message_is_type_aim(m)) {
     char *temp2;
     temp = owl_aim_normalize_screenname(owl_message_get_recipient(m));
     temp2 = g_utf8_strdown(temp,-1);
-    to = owl_sprintf("aim:%s", temp2);
-    owl_free(temp2);
-    owl_free(temp);
+    to = g_strdup_printf("aim:%s", temp2);
+    g_free(temp2);
+    g_free(temp);
   } else {
-    to = owl_sprintf("loopback");
+    to = g_strdup("loopback");
   }
 
   snprintf(filename, MAXPATHLEN, "%s/%s", logpath, to);
   owl_log_append(m, filename);
-  owl_free(to);
+  g_free(to);
 
   snprintf(filename, MAXPATHLEN, "%s/all", logpath);
   owl_log_append(m, filename);
-  owl_free(logpath);
+  g_free(logpath);
 }
 
 
@@ -198,8 +199,8 @@ void owl_log_outgoing_zephyr_error(const owl_zwrite *zw, const char *text)
   file=fopen(filename, "a");
   if (!file) {
     owl_function_error("Unable to open file for outgoing logging");
-    owl_free(logpath);
-    owl_free(tobuff);
+    g_free(logpath);
+    g_free(tobuff);
     return;
   }
   fprintf(file, "ERROR (owl): %s\n%s\n", tobuff, text);
@@ -209,11 +210,11 @@ void owl_log_outgoing_zephyr_error(const owl_zwrite *zw, const char *text)
   fclose(file);
 
   snprintf(filename, MAXPATHLEN, "%s/all", logpath);
-  owl_free(logpath);
+  g_free(logpath);
   file=fopen(filename, "a");
   if (!file) {
     owl_function_error("Unable to open file for outgoing logging");
-    owl_free(tobuff);
+    g_free(tobuff);
     return;
   }
   fprintf(file, "ERROR (owl): %s\n%s\n", tobuff, text);
@@ -222,7 +223,7 @@ void owl_log_outgoing_zephyr_error(const owl_zwrite *zw, const char *text)
   }
   fclose(file);
 
-  owl_free(tobuff);
+  g_free(tobuff);
 }
 
 void owl_log_incoming(const owl_message *m)
@@ -260,26 +261,26 @@ void owl_log_incoming(const owl_message *m)
     if (personal) {
       from=frombuff=short_zuser(owl_message_get_sender(m));
     } else {
-      from=frombuff=owl_strdup(owl_message_get_class(m));
+      from=frombuff=g_strdup(owl_message_get_class(m));
     }
   } else if (owl_message_is_type_aim(m)) {
     /* we do not yet handle chat rooms */
     char *normalto, *temp;
     temp = owl_aim_normalize_screenname(owl_message_get_sender(m));
     normalto = g_utf8_strdown(temp, -1);
-    from=frombuff=owl_sprintf("aim:%s", normalto);
-    owl_free(normalto);
-    owl_free(temp);
+    from=frombuff=g_strdup_printf("aim:%s", normalto);
+    g_free(normalto);
+    g_free(temp);
   } else if (owl_message_is_type_loopback(m)) {
-    from=frombuff=owl_strdup("loopback");
+    from=frombuff=g_strdup("loopback");
   } else if (owl_message_is_type_jabber(m)) {
     if (personal) {
-      from=frombuff=owl_sprintf("jabber:%s",owl_message_get_sender(m));
+      from=frombuff=g_strdup_printf("jabber:%s",owl_message_get_sender(m));
     } else {
-      from=frombuff=owl_sprintf("jabber:%s",owl_message_get_recipient(m));
+      from=frombuff=g_strdup_printf("jabber:%s",owl_message_get_recipient(m));
     }
   } else {
-    from=frombuff=owl_strdup("unknown");
+    from=frombuff=g_strdup("unknown");
   }
   
   /* check for malicious sender formats */
@@ -300,7 +301,7 @@ void owl_log_incoming(const owl_message *m)
     if (strcmp(from, "weird")) {
       char* temp = g_utf8_strdown(frombuff, -1);
       if (temp) {
-	owl_free(frombuff);
+	g_free(frombuff);
 	from = frombuff = temp;
       }
     }
@@ -324,22 +325,22 @@ void owl_log_incoming(const owl_message *m)
     /* We want to log to all of the CC'd people who were not us, or
      * the sender, as well.
      */
-    char *cc, *temp;
+    char *temp;
+    GList *cc;
     cc = owl_message_get_cc_without_recipient(m);
-    if (cc != NULL) {
-      temp = strtok(cc, " ");
-      while (temp != NULL) {
-        temp = short_zuser(temp);
-        if (strcasecmp(temp, frombuff) != 0) {
-          snprintf(filename, MAXPATHLEN, "%s/%s", logpath, temp);
-          owl_log_append(m, filename);
-        }
-        temp = strtok(NULL, " ");
+    while (cc != NULL) {
+      temp = short_zuser(cc->data);
+      if (strcasecmp(temp, frombuff) != 0) {
+        snprintf(filename, MAXPATHLEN, "%s/%s", logpath, temp);
+        owl_log_append(m, filename);
       }
-      owl_free(cc);
+
+      g_free(temp);
+      g_free(cc->data);
+      cc = g_list_delete_link(cc, cc);
     }
   }
 
-  owl_free(frombuff);
-  owl_free(logpath);
+  g_free(frombuff);
+  g_free(logpath);
 }

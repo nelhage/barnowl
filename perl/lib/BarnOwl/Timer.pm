@@ -12,12 +12,24 @@ sub new {
 
     my $self = {cb => $cb};
 
+    my $name = $args->{name};
+    $name = "(unnamed)" unless defined $name;
+
     bless($self, $class);
 
     $self->{timer} = BarnOwl::Internal::add_timer($args->{after} || 0,
                                                   $args->{interval} || 0,
-                                                  $self);
+                                                  $self,
+                                                  $name);
     return $self;
+}
+
+sub stop {
+    my $self = shift;
+    if(defined($self->{timer})) {
+        BarnOwl::Internal::remove_timer($self->{timer});
+        undef $self->{timer};
+    }
 }
 
 sub do_callback {
@@ -27,9 +39,7 @@ sub do_callback {
 
 sub DESTROY {
     my $self = shift;
-    if(defined($self->{timer})) {
-        BarnOwl::Internal::remove_timer($self->{timer});
-    }
+    $self->stop;
 }
 
 

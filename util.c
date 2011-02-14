@@ -6,151 +6,11 @@
 #include <pwd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-void sepbar(const char *in)
-{
-  WINDOW *sepwin;
-  const owl_messagelist *ml;
-  const owl_view *v;
-  owl_view_iterator *iter;
-  int x, y;
-  const char *foo, *appendtosepbar;
-
-  iter = owl_view_iterator_delete_later(owl_view_iterator_new());
-
-  sepwin=owl_global_get_curs_sepwin(&g);
-  ml=owl_global_get_msglist(&g);
-  v=owl_global_get_current_view(&g);
-
-  werase(sepwin);
-  wattron(sepwin, A_REVERSE);
-  if (owl_global_is_fancylines(&g)) {
-    whline(sepwin, ACS_HLINE, owl_global_get_cols(&g));
-  } else {
-    whline(sepwin, '-', owl_global_get_cols(&g));
-  }
-
-  if (owl_global_is_sepbar_disable(&g)) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, owl_global_get_cols(&g)-1);
-    return;
-  }
-
-  wmove(sepwin, 0, 2);
-
-  if (owl_messagelist_get_size(ml) == 0)
-    waddstr(sepwin, " (-) ");
-  else
-    wprintw(sepwin, " (%i) ", owl_messagelist_get_size(ml));
-
-  foo=owl_view_get_filtname(v);
-  if (strcmp(foo, owl_global_get_view_home(&g)))
-      wattroff(sepwin, A_REVERSE);
-  wprintw(sepwin, " %s ", owl_view_get_filtname(v));
-  if (strcmp(foo, owl_global_get_view_home(&g)))
-      wattron(sepwin, A_REVERSE);
-
-  if (owl_mainwin_is_curmsg_truncated(owl_global_get_mainwin(&g))) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    wattron(sepwin, A_BOLD);
-    waddstr(sepwin, " <truncated> ");
-    wattroff(sepwin, A_BOLD);
-  }
-
-  owl_view_iterator_clone(iter, owl_mainwin_get_last_msg(owl_global_get_mainwin(&g)));
-  if (owl_view_iterator_is_valid(iter)
-      && !owl_view_iterator_is_at_end(iter)) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    wattron(sepwin, A_BOLD);
-    waddstr(sepwin, " <more> ");
-    wattroff(sepwin, A_BOLD);
-  }
-
-  if (owl_global_get_rightshift(&g)>0) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    wprintw(sepwin, " right: %i ", owl_global_get_rightshift(&g));
-  }
-
-  if (owl_global_is_zaway(&g) || owl_global_is_aaway(&g)) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    wattron(sepwin, A_BOLD);
-    wattroff(sepwin, A_REVERSE);
-    if (owl_global_is_zaway(&g) && owl_global_is_aaway(&g)) {
-      waddstr(sepwin, " AWAY ");
-    } else if (owl_global_is_zaway(&g)) {
-      waddstr(sepwin, " Z-AWAY ");
-    } else if (owl_global_is_aaway(&g)) {
-      waddstr(sepwin, " A-AWAY ");
-    }
-    wattron(sepwin, A_REVERSE);
-    wattroff(sepwin, A_BOLD);
-  }
-
-  if (owl_global_get_curmsg_vert_offset(&g)) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    wattron(sepwin, A_BOLD);
-    wattroff(sepwin, A_REVERSE);
-    waddstr(sepwin, " SCROLL ");
-    wattron(sepwin, A_REVERSE);
-    wattroff(sepwin, A_BOLD);
-  }
-  
-  if (in) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    waddstr(sepwin, in);
-  }
-
-  appendtosepbar = owl_global_get_appendtosepbar(&g);
-  if (appendtosepbar && *appendtosepbar) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    waddstr(sepwin, " ");
-    waddstr(sepwin, owl_global_get_appendtosepbar(&g));
-    waddstr(sepwin, " ");
-  }
-
-  getyx(sepwin, y, x);
-  wmove(sepwin, y, owl_global_get_cols(&g)-1);
-    
-  wattroff(sepwin, A_BOLD);
-  wattroff(sepwin, A_REVERSE);
-}
-
-char **atokenize(const char *buffer, const char *sep, int *i)
-{
-  /* each element of return must be freed by user */
-  char **args;
-  char *workbuff, *foo;
-  int done=0, first=1, count=0;
-
-  workbuff = owl_strdup(buffer);
-
-  args=NULL;
-  while (!done) {
-    if (first) {
-      first=0;
-      foo=strtok(workbuff, sep);
-    } else {
-      foo=strtok(NULL, sep);
-    }
-    if (foo==NULL) {
-      done=1;
-    } else {
-      args=owl_realloc(args, sizeof(char *) * (count+1));
-      args[count] = owl_strdup(foo);
-      count++;
-    }
-  }
-  *i=count;
-  owl_free(workbuff);
-  return(args);
-}
+#include <assert.h>
+#include <stdarg.h>
+#include <glib.h>
+#include <glib/gstdio.h>
+#include <glib-object.h>
 
 const char *skiptokens(const char *buff, int n) {
   /* skips n tokens and returns where that would be. */
@@ -180,7 +40,7 @@ char *owl_util_makepath(const char *in)
   char *out, user[MAXPATHLEN];
   struct passwd *pw;
 
-  out=owl_malloc(MAXPATHLEN+1);
+  out=g_new(char, MAXPATHLEN+1);
   out[0]='\0';
   j=strlen(in);
   x=0;
@@ -237,26 +97,9 @@ char *owl_util_makepath(const char *in)
   return(out);
 }
 
-void atokenize_delete(char **tok, int nels)
-{
-  int i;
-  for (i=0; i<nels; i++) {
-    owl_free(tok[i]);
-  }
-  owl_free(tok);
-}
-
-
 void owl_parse_delete(char **argv, int argc)
 {
-  int i;
-
-  if (!argv) return;
-  
-  for (i=0; i<argc; i++) {
-    if (argv[i]) owl_free(argv[i]);
-  }
-  owl_free(argv);
+  g_strfreev(argv);
 }
 
 char **owl_parseline(const char *line, int *argc)
@@ -264,17 +107,16 @@ char **owl_parseline(const char *line, int *argc)
   /* break a command line up into argv, argc.  The caller must free
      the returned values.  If there is an error argc will be set to
      -1, argv will be NULL and the caller does not need to free
-     anything */
+     anything. The returned vector is NULL-terminated. */
 
-  char **argv;
+  GPtrArray *argv;
   int i, len, between=1;
-  char *curarg;
+  GString *curarg;
   char quote;
 
-  argv=owl_malloc(sizeof(char *));
+  argv = g_ptr_array_new();
   len=strlen(line);
-  curarg=owl_malloc(len+10);
-  strcpy(curarg, "");
+  curarg = g_string_new("");
   quote='\0';
   *argc=0;
   for (i=0; i<len+1; i++) {
@@ -304,44 +146,127 @@ char **owl_parseline(const char *line, int *argc)
       }
 
       /* if another type of quote is open then treat this as a literal */
-      curarg[strlen(curarg)+1]='\0';
-      curarg[strlen(curarg)]=line[i];
+      g_string_append_c(curarg, line[i]);
       continue;
     }
 
     /* if it's not a space or end of command, then use it */
     if (line[i]!=' ' && line[i]!='\t' && line[i]!='\n' && line[i]!='\0') {
-      curarg[strlen(curarg)+1]='\0';
-      curarg[strlen(curarg)]=line[i];
+      g_string_append_c(curarg, line[i]);
       continue;
     }
 
     /* otherwise, if we're not in quotes, add the whole argument */
     if (quote=='\0') {
       /* add the argument */
-      argv=owl_realloc(argv, sizeof(char *)*((*argc)+1));
-      argv[*argc] = owl_strdup(curarg);
-      *argc=*argc+1;
-      strcpy(curarg, "");
+      g_ptr_array_add(argv, g_string_free(curarg, false));
+      curarg = g_string_new("");
       between=1;
       continue;
     }
 
     /* if it is a space and we're in quotes, then use it */
-    curarg[strlen(curarg)+1]='\0';
-    curarg[strlen(curarg)]=line[i];
+    g_string_append_c(curarg, line[i]);
   }
 
-  owl_free(curarg);
+  *argc = argv->len;
+  g_ptr_array_add(argv, NULL);
+  g_string_free(curarg, true);
 
   /* check for unbalanced quotes */
   if (quote!='\0') {
-    owl_parse_delete(argv, *argc);
-    *argc=-1;
+    /* TODO: when we move to requiring glib 2.22+, use
+     * g_ptr_array_new_with_free_func. */
+    g_ptr_array_foreach(argv, (GFunc)g_free, NULL);
+    g_ptr_array_free(argv, true);
+    *argc = -1;
     return(NULL);
   }
 
-  return(argv);
+  return (char**)g_ptr_array_free(argv, false);
+}
+
+/* Appends a quoted version of arg suitable for placing in a
+ * command-line to a GString. Does not append a space. */
+void owl_string_append_quoted_arg(GString *buf, const char *arg)
+{
+  const char *argp;
+  if (arg[0] == '\0') {
+    /* Quote the empty string. */
+    g_string_append(buf, "''");
+  } else if (arg[strcspn(arg, "'\" \n\t")] == '\0') {
+    /* If there are no nasty characters, return as-is. */
+    g_string_append(buf, arg);
+  } else if (!strchr(arg, '\'')) {
+    /* Single-quote if possible. */
+    g_string_append_c(buf, '\'');
+    g_string_append(buf, arg);
+    g_string_append_c(buf, '\'');
+  } else {
+    /* Nasty case: double-quote, but change all internal "s to "'"'"
+     * so that they are single-quoted because we're too cool for
+     * backslashes.
+     */
+    g_string_append_c(buf, '"');
+    for (argp = arg; *argp; argp++) {
+      if (*argp == '"')
+	g_string_append(buf, "\"'\"'\"");
+      else
+	g_string_append_c(buf, *argp);
+    }
+    g_string_append_c(buf, '"');
+  }
+}
+
+/*
+ * Appends 'tmpl' to 'buf', replacing any instances of '%q' with arguments from
+ * the varargs provided, quoting them to be safe for placing in a barnowl
+ * command line.
+ */
+void owl_string_appendf_quoted(GString *buf, const char *tmpl, ...)
+{
+  va_list ap;
+  va_start(ap, tmpl);
+  owl_string_vappendf_quoted(buf, tmpl, ap);
+  va_end(ap);
+}
+
+void owl_string_vappendf_quoted(GString *buf, const char *tmpl, va_list ap)
+{
+  const char *p = tmpl, *last = tmpl;
+  while (true) {
+    p = strchr(p, '%');
+    if (p == NULL) break;
+    if (*(p+1) != 'q') {
+      p++;
+      if (*p) p++;
+      continue;
+    }
+    g_string_append_len(buf, last, p - last);
+    owl_string_append_quoted_arg(buf, va_arg(ap, char *));
+    p += 2; last = p;
+  }
+
+  g_string_append(buf, last);
+}
+
+char *owl_string_build_quoted(const char *tmpl, ...)
+{
+  GString *buf = g_string_new("");
+  va_list ap;
+  va_start(ap, tmpl);
+  owl_string_vappendf_quoted(buf, tmpl, ap);
+  va_end(ap);
+  return g_string_free(buf, false);  
+}
+
+/* Returns a quoted version of arg suitable for placing in a
+ * command-line. Result should be freed with g_free. */
+char *owl_arg_quote(const char *arg)
+{
+  GString *buf = g_string_new("");;
+  owl_string_append_quoted_arg(buf, arg);
+  return g_string_free(buf, false);
 }
 
 /* caller must free the return */
@@ -359,46 +284,11 @@ char *owl_util_minutes_to_timestr(int in)
   run-=hours*60;
 
   if (days>0) {
-    out=owl_sprintf("%i d %2.2i:%2.2li", days, hours, run);
+    out=g_strdup_printf("%i d %2.2i:%2.2li", days, hours, run);
   } else {
-    out=owl_sprintf("    %2.2i:%2.2li", hours, run);
+    out=g_strdup_printf("    %2.2i:%2.2li", hours, run);
   }
   return(out);
-}
-
-/* hooks for doing memory allocation et. al. in owl */
-
-void *owl_malloc(size_t size)
-{
-  return(g_malloc(size));
-}
-
-void owl_free(void *ptr)
-{
-  g_free(ptr);
-}
-
-char *owl_strdup(const char *s1)
-{
-  return(g_strdup(s1));
-}
-
-void *owl_realloc(void *ptr, size_t size)
-{
-  return(g_realloc(ptr, size));
-}
-
-/* allocates memory and returns the string or null.
- * caller must free the string. 
- */
-char *owl_sprintf(const char *fmt, ...)
-{
-  va_list ap;
-  char *ret = NULL;
-  va_start(ap, fmt);
-  ret = g_strdup_vprintf(fmt, ap);
-  va_end(ap);
-  return ret;
 }
 
 /* These are in order of their value in owl.h */
@@ -452,15 +342,15 @@ char *owl_util_get_default_tty(void)
   char *out;
 
   if (getenv("DISPLAY")) {
-    out=owl_strdup(getenv("DISPLAY"));
+    out=g_strdup(getenv("DISPLAY"));
   } else if ((tmp=ttyname(fileno(stdout)))!=NULL) {
-    out=owl_strdup(tmp);
+    out=g_strdup(tmp);
     if (!strncmp(out, "/dev/", 5)) {
-      owl_free(out);
-      out=owl_strdup(tmp+5);
+      g_free(out);
+      out=g_strdup(tmp+5);
     }
   } else {
-    out=owl_strdup("unknown");
+    out=g_strdup("unknown");
   }
   return(out);
 }
@@ -473,7 +363,7 @@ char *owl_util_stripnewlines(const char *in)
   
   char  *tmp, *ptr1, *ptr2, *out;
 
-  ptr1=tmp=owl_strdup(in);
+  ptr1=tmp=g_strdup(in);
   while (ptr1[0]=='\n') {
     ptr1++;
   }
@@ -483,9 +373,54 @@ char *owl_util_stripnewlines(const char *in)
     ptr2--;
   }
 
-  out=owl_strdup(ptr1);
-  owl_free(tmp);
+  out=g_strdup(ptr1);
+  g_free(tmp);
   return(out);
+}
+
+
+/* If filename is a link, recursively resolve symlinks.  Otherwise, return the filename
+ * unchanged.  On error, call owl_function_error and return NULL.
+ *
+ * This function assumes that filename eventually resolves to an acutal file.
+ * If you want to check this, you should stat() the file first.
+ *
+ * The caller of this function is responsible for freeing the return value.
+ *
+ * Error conditions are the same as g_file_read_link.
+ */
+gchar *owl_util_recursive_resolve_link(const char *filename)
+{
+  gchar *last_path = g_strdup(filename);
+  GError *err = NULL;
+
+  while (g_file_test(last_path, G_FILE_TEST_IS_SYMLINK)) {
+    gchar *link_path = g_file_read_link(last_path, &err);
+    if (link_path == NULL) {
+      owl_function_error("Cannot resolve symlink %s: %s",
+			 last_path, err->message);
+      g_error_free(err);
+      g_free(last_path);
+      return NULL;
+    }
+
+    /* Deal with obnoxious relative paths. If we really care, all this
+     * is racy. Whatever. */
+    if (!g_path_is_absolute(link_path)) {
+      char *last_dir = g_path_get_dirname(last_path);
+      char *tmp = g_build_path(G_DIR_SEPARATOR_S,
+			       last_dir,
+			       link_path,
+			       NULL);
+      g_free(last_dir);
+      g_free(link_path);
+      link_path = tmp;
+    }
+
+    g_free(last_path);
+    last_path = link_path;
+  }
+  return last_path;
 }
 
 /* Delete all lines matching "line" from the named file.  If no such
@@ -493,11 +428,12 @@ char *owl_util_stripnewlines(const char *in)
  * backup file containing the original contents.  The match is
  * case-insensitive.
  *
- * Returns the number of lines removed
+ * Returns the number of lines removed on success.  Returns -1 on failure.
  */
 int owl_util_file_deleteline(const char *filename, const char *line, int backup)
 {
   char *backupfile, *newfile, *buf = NULL;
+  gchar *actual_filename; /* gchar; we need to g_free it */
   FILE *old, *new;
   struct stat st;
   int numremoved = 0;
@@ -505,31 +441,38 @@ int owl_util_file_deleteline(const char *filename, const char *line, int backup)
   if ((old = fopen(filename, "r")) == NULL) {
     owl_function_error("Cannot open %s (for reading): %s",
 		       filename, strerror(errno));
-    return 0;
+    return -1;
   }
 
   if (fstat(fileno(old), &st) != 0) {
     owl_function_error("Cannot stat %s: %s", filename, strerror(errno));
-    return 0;
+    return -1;
   }
 
-  newfile = owl_sprintf("%s.new", filename);
+  /* resolve symlinks, because link() fails on symlinks, at least on AFS */
+  actual_filename = owl_util_recursive_resolve_link(filename);
+  if (actual_filename == NULL)
+    return -1; /* resolving the symlink failed, but we already logged this error */
+
+  newfile = g_strdup_printf("%s.new", actual_filename);
   if ((new = fopen(newfile, "w")) == NULL) {
     owl_function_error("Cannot open %s (for writing): %s",
-		       filename, strerror(errno));
-    free(newfile);
+		       actual_filename, strerror(errno));
+    g_free(newfile);
     fclose(old);
-    return 0;
+    free(actual_filename);
+    return -1;
   }
 
   if (fchmod(fileno(new), st.st_mode & 0777) != 0) {
     owl_function_error("Cannot set permissions on %s: %s",
-		       filename, strerror(errno));
+		       actual_filename, strerror(errno));
     unlink(newfile);
     fclose(new);
-    free(newfile);
+    g_free(newfile);
     fclose(old);
-    return 0;
+    free(actual_filename);
+    return -1;
   }
 
   while (owl_getline_chomp(&buf, old))
@@ -537,46 +480,36 @@ int owl_util_file_deleteline(const char *filename, const char *line, int backup)
       fprintf(new, "%s\n", buf);
     else
       numremoved++;
-  owl_free(buf);
+  g_free(buf);
 
   fclose(new);
   fclose(old);
 
   if (backup) {
-    backupfile = owl_sprintf("%s.backup", filename);
+    backupfile = g_strdup_printf("%s.backup", actual_filename);
     unlink(backupfile);
-    if (link(filename, backupfile) != 0) {
+    if (link(actual_filename, backupfile) != 0) {
       owl_function_error("Cannot link %s: %s", backupfile, strerror(errno));
-      owl_free(backupfile);
+      g_free(backupfile);
       unlink(newfile);
-      owl_free(newfile);
-      return 0;
+      g_free(newfile);
+      return -1;
     }
-    owl_free(backupfile);
+    g_free(backupfile);
   }
 
-  if (rename(newfile, filename) != 0) {
+  if (rename(newfile, actual_filename) != 0) {
     owl_function_error("Cannot move %s to %s: %s",
-		       newfile, filename, strerror(errno));
-    numremoved = 0;
+		       newfile, actual_filename, strerror(errno));
+    numremoved = -1;
   }
 
   unlink(newfile);
-  owl_free(newfile);
+  g_free(newfile);
+
+  g_free(actual_filename);
 
   return numremoved;
-}
-
-int owl_util_max(int a, int b)
-{
-  if (a>b) return(a);
-  return(b);
-}
-
-int owl_util_min(int a, int b)
-{
-  if (a<b) return(a);
-  return(b);
 }
 
 /* Return the base class or instance from a zephyr class, by removing
@@ -591,7 +524,7 @@ char * owl_util_baseclass(const char * class)
     class += 2;
   }
 
-  start = owl_strdup(class);
+  start = g_strdup(class);
   end = start + strlen(start) - 1;
   while(end > start && *end == 'd' && *(end-1) == '.') {
     end -= 2;
@@ -624,7 +557,7 @@ char * owl_strip_format_chars(const char *in)
   char *r;
   if (g_utf8_validate(in, -1, NULL)) {
     const char *s, *p;
-    r = owl_malloc(strlen(in)+1);
+    r = g_new(char, strlen(in)+1);
     r[0] = '\0';
     s = in;
     p = strchr(s, OWL_FMTEXT_UC_STARTBYTE_UTF8);
@@ -647,7 +580,7 @@ char * owl_strip_format_chars(const char *in)
     if (s) strcat(r,s);
   }
   else {
-    r = owl_strdup("");
+    r = g_strdup("");
   }
   return r;
 }
@@ -676,9 +609,9 @@ char * owl_validate_utf8(const char *in)
 {
   char *out;
   if (g_utf8_validate(in, -1, NULL)) {
-    out = owl_strdup(in);
+    out = g_strdup(in);
   } else {
-    out = owl_strdup("");
+    out = g_strdup("");
   }
   return out;
 }
@@ -732,7 +665,7 @@ static int owl_getline_internal(char **s, FILE *fp, int newline)
     c = getc(fp);
     if ((target + 1) > size) {
       size += BUFSIZ;
-      *s = owl_realloc(*s, size);
+      *s = g_renew(char, *s, size);
     }
     if (c == EOF)
       break;
@@ -749,7 +682,7 @@ static int owl_getline_internal(char **s, FILE *fp, int newline)
 
 /* Read a line from fp, allocating memory to hold it, returning the number of
  * byte read.  *s should either be NULL or a pointer to memory allocated with
- * owl_malloc; it will be owl_realloc'd as appropriate.  The caller must
+ * g_malloc; it will be g_renew'd as appropriate.  The caller must
  * eventually free it.  (This is roughly the interface of getline in the gnu
  * libc).
  *
@@ -775,7 +708,7 @@ char *owl_slurp(FILE *fp)
   int count;
 
   while (1) {
-    buf = owl_realloc(buf, size + BUFSIZ);
+    buf = g_renew(char, buf, size + BUFSIZ);
     p = &buf[size];
     size += BUFSIZ;
 
@@ -786,3 +719,78 @@ char *owl_slurp(FILE *fp)
 
   return buf;
 }
+
+gulong owl_dirty_window_on_signal(owl_window *w, gpointer sender, const gchar *detailed_signal)
+{
+  return owl_signal_connect_object(sender, detailed_signal, G_CALLBACK(owl_window_dirty), w, G_CONNECT_SWAPPED);
+}
+
+typedef struct { /*noproto*/
+  GObject  *sender;
+  gulong    signal_id;
+} SignalData;
+
+static void _closure_invalidated(gpointer data, GClosure *closure);
+
+/*
+ * GObject's g_signal_connect_object has a documented bug. This function is
+ * identical except it does not leak the signal handler.
+ */
+gulong owl_signal_connect_object(gpointer sender, const gchar *detailed_signal, GCallback c_handler, gpointer receiver, GConnectFlags connect_flags)
+{
+  g_return_val_if_fail (G_TYPE_CHECK_INSTANCE (sender), 0);
+  g_return_val_if_fail (detailed_signal != NULL, 0);
+  g_return_val_if_fail (c_handler != NULL, 0);
+
+  if (receiver) {
+    SignalData *sdata;
+    GClosure *closure;
+    gulong signal_id;
+
+    g_return_val_if_fail (G_IS_OBJECT (receiver), 0);
+
+    closure = ((connect_flags & G_CONNECT_SWAPPED) ? g_cclosure_new_object_swap : g_cclosure_new_object) (c_handler, receiver);
+    signal_id = g_signal_connect_closure (sender, detailed_signal, closure, connect_flags & G_CONNECT_AFTER);
+
+    /* Register the missing hooks */
+    sdata = g_slice_new0(SignalData);
+    sdata->sender = sender;
+    sdata->signal_id = signal_id;
+
+    g_closure_add_invalidate_notifier(closure, sdata, _closure_invalidated);
+
+    return signal_id;
+  } else {
+    return g_signal_connect_data(sender, detailed_signal, c_handler, NULL, NULL, connect_flags);
+  }
+}
+
+/*
+ * There are three ways the signal could come to an end:
+ * 
+ * 1. The user explicitly disconnects it with the returned signal_id.
+ *    - In that case, the disconnection unref's the closure, causing it
+ *      to first be invalidated. The handler's already disconnected, so
+ *      we have no work to do.
+ * 2. The sender gets destroyed.
+ *    - GObject will disconnect each signal which then goes into the above
+ *      case. Our handler does no work.
+ * 3. The receiver gets destroyed.
+ *    - The GClosure was created by g_cclosure_new_object_{,swap} which gets
+ *      invalidated when the receiver is destroyed. We then follow through case 1
+ *      again, but *this* time, the handler has not been disconnected. We then
+ *      clean up ourselves.
+ *
+ * We can't actually hook into this process earlier with weakrefs as GObject
+ * will, on object dispose, first disconnect signals, then invalidate closures,
+ * and notify weakrefs last.
+ */
+static void _closure_invalidated(gpointer data, GClosure *closure)
+{
+  SignalData *sdata = data;
+  if (g_signal_handler_is_connected(sdata->sender, sdata->signal_id)) {
+    g_signal_handler_disconnect(sdata->sender, sdata->signal_id);
+  }
+  g_slice_free(SignalData, sdata);
+}
+

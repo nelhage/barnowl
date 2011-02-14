@@ -1,14 +1,17 @@
 #include <string.h>
 #include "owl.h"
 
+static void _owl_keymap_format_bindings(const owl_keymap *km, owl_fmtext *fm);
+static void _owl_keymap_format_with_parents(const owl_keymap *km, owl_fmtext *fm);
+
 /* returns 0 on success */
 int owl_keymap_init(owl_keymap *km, const char *name, const char *desc, void (*default_fn)(owl_input), void (*prealways_fn)(owl_input), void (*postalways_fn)(owl_input))
 {
   if (!name || !desc) return(-1);
-  if ((km->name = owl_strdup(name)) == NULL) return(-1);
-  if ((km->desc = owl_strdup(desc)) == NULL) return(-1);
+  if ((km->name = g_strdup(name)) == NULL) return(-1);
+  if ((km->desc = g_strdup(desc)) == NULL) return(-1);
   if (0 != owl_list_create(&km->bindings)) return(-1);
-  km->submap = NULL;
+  km->parent = NULL;
   km->default_fn = default_fn;
   km->prealways_fn = prealways_fn;
   km->postalways_fn = postalways_fn;
@@ -18,14 +21,14 @@ int owl_keymap_init(owl_keymap *km, const char *name, const char *desc, void (*d
 /* note that this will free the memory for the bindings! */
 void owl_keymap_cleanup(owl_keymap *km)
 {
-  owl_free(km->name);
-  owl_free(km->desc);
+  g_free(km->name);
+  g_free(km->desc);
   owl_list_cleanup(&km->bindings, (void (*)(void *))owl_keybinding_delete);
 }
 
-void owl_keymap_set_submap(owl_keymap *km, const owl_keymap *submap)
+void owl_keymap_set_parent(owl_keymap *km, const owl_keymap *parent)
 {
-  km->submap = submap;
+  km->parent = parent;
 }
 
 /* creates and adds a key binding */
@@ -34,9 +37,9 @@ int owl_keymap_create_binding(owl_keymap *km, const char *keyseq, const char *co
   owl_keybinding *kb, *curkb;
   int i;
 
-  if ((kb = owl_malloc(sizeof(owl_keybinding))) == NULL) return(-1);
+  if ((kb = g_new(owl_keybinding, 1)) == NULL) return(-1);
   if (0 != owl_keybinding_init(kb, keyseq, command, function_fn, desc)) {
-    owl_free(kb);
+    g_free(kb);
     return(-1);
   }
   /* see if another matching binding, and if so remove it.
@@ -59,9 +62,9 @@ int owl_keymap_remove_binding(owl_keymap *km, const char *keyseq)
   owl_keybinding *kb, *curkb;
   int i;
 
-  if ((kb = owl_malloc(sizeof(owl_keybinding))) == NULL) return(-1);
+  if ((kb = g_new(owl_keybinding, 1)) == NULL) return(-1);
   if (0 != owl_keybinding_make_keys(kb, keyseq)) {
-    owl_free(kb);
+    g_free(kb);
     return(-1);
   }
 
@@ -81,15 +84,12 @@ int owl_keymap_remove_binding(owl_keymap *km, const char *keyseq)
 char *owl_keymap_summary(const owl_keymap *km)
 {
   if (!km || !km->name || !km->desc) return NULL;
-  return owl_sprintf("%-15s - %s", km->name, km->desc);
+  return g_strdup_printf("%-15s - %s", km->name, km->desc);
 }
 
 /* Appends details about the keymap to fm */
-void owl_keymap_get_details(const owl_keymap *km, owl_fmtext *fm)
+void owl_keymap_get_details(const owl_keymap *km, owl_fmtext *fm, int recurse)
 {
-  int i, nbindings; 
-  const owl_keybinding *kb;
-  
   owl_fmtext_append_bold(fm, "KEYMAP - ");
   owl_fmtext_append_bold(fm, km->name);
   owl_fmtext_append_normal(fm, "\n");
@@ -98,9 +98,9 @@ void owl_keymap_get_details(const owl_keymap *km, owl_fmtext *fm)
     owl_fmtext_append_normal(fm, km->desc);
     owl_fmtext_append_normal(fm, "\n");
   }
-  if (km->submap) {
-    owl_fmtext_append_normal(fm, OWL_TABSTR "Has submap: ");
-    owl_fmtext_append_normal(fm, km->submap->name);
+  if (km->parent) {
+    owl_fmtext_append_normal(fm, OWL_TABSTR "Has parent: ");
+    owl_fmtext_append_normal(fm, km->parent->name);
     owl_fmtext_append_normal(fm, "\n");
   }
     owl_fmtext_append_normal(fm, "\n");
@@ -118,6 +118,31 @@ void owl_keymap_get_details(const owl_keymap *km, owl_fmtext *fm)
   }
 
   owl_fmtext_append_bold(fm, "\nKey bindings:\n\n");  
+  if (recurse) {
+    _owl_keymap_format_with_parents(km, fm);
+  } else {
+    _owl_keymap_format_bindings(km, fm);
+  }
+}
+
+static void _owl_keymap_format_with_parents(const owl_keymap *km, owl_fmtext *fm)
+{
+  while (km) {
+    _owl_keymap_format_bindings(km, fm);
+    km = km->parent;
+    if (km) {
+      owl_fmtext_append_bold(fm, "\nInherited from ");
+      owl_fmtext_append_bold(fm, km->name);
+      owl_fmtext_append_bold(fm, ":\n\n");
+    }
+  }
+}
+
+static void _owl_keymap_format_bindings(const owl_keymap *km, owl_fmtext *fm)
+{
+  int i, nbindings;
+  const owl_keybinding *kb;
+  
   nbindings = owl_list_get_size(&km->bindings);
   for (i=0; i<nbindings; i++) {
     char buff[100];
@@ -171,7 +196,7 @@ void owl_keyhandler_add_keymap(owl_keyhandler *kh, owl_keymap *km)
 owl_keymap *owl_keyhandler_create_and_add_keymap(owl_keyhandler *kh, const char *name, const char *desc, void (*default_fn)(owl_input), void (*prealways_fn)(owl_input), void (*postalways_fn)(owl_input))
 {
   owl_keymap *km;
-  km = owl_malloc(sizeof(owl_keymap));
+  km = g_new(owl_keymap, 1);
   if (!km) return NULL;
   owl_keymap_init(km, name, desc, default_fn, prealways_fn, postalways_fn);
   owl_keyhandler_add_keymap(kh, km);
@@ -199,7 +224,7 @@ void owl_keyhandler_get_keymap_names(const owl_keyhandler *kh, owl_list *l)
 
 void owl_keyhandler_keymap_namelist_cleanup(owl_list *l)
 {
-  owl_list_cleanup(l, owl_free);
+  owl_list_cleanup(l, g_free);
 }
 
 
@@ -247,17 +272,17 @@ int owl_keyhandler_process(owl_keyhandler *kh, owl_input j)
     return(-1);
   }
 
-  /* deal with the always_fn for the map and submaps */
-  for (km=kh->active; km; km=km->submap) {
+  /* deal with the always_fn for the map and parents */
+  for (km=kh->active; km; km=km->parent) {
     if (km->prealways_fn) {
       km->prealways_fn(j);
     }
   }
 
   /* search for a match.  goes through active keymap and then
-   * through submaps... TODO:  clean this up so we can pull
+   * through parents... TODO:  clean this up so we can pull
    * keyhandler and keymap apart.  */
-  for (km=kh->active; km; km=km->submap) {
+  for (km=kh->active; km; km=km->parent) {
     for (i=owl_list_get_size(&km->bindings)-1; i>=0; i--) {
       kb = owl_list_get_element(&km->bindings, i);
       match = owl_keybinding_match(kb, kh);

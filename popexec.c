@@ -16,23 +16,25 @@ owl_popexec *owl_popexec_new(const char *command)
   int pipefds[2], child_write_fd, parent_read_fd;
   pid_t pid;
 
-  pe = owl_malloc(sizeof(owl_popexec));
+  if (owl_global_get_popwin(&g) || owl_global_get_viewwin(&g)) {
+    owl_function_error("Popwin already in use.");
+    return NULL;
+  }
+
+  pe = g_new(owl_popexec, 1);
   if (!pe) return NULL;
   pe->winactive=0;
   pe->pid=0;
   pe->refcount=0;
 
-  pw=owl_global_get_popwin(&g);
-  pe->vwin=v=owl_global_get_viewwin(&g);
-
+  pw = owl_popwin_new();
+  owl_global_set_popwin(&g, pw);
   owl_popwin_up(pw);
-  owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless");
-  owl_viewwin_init_text(v, owl_popwin_get_curswin(pw),
-			owl_popwin_get_lines(pw), owl_popwin_get_cols(pw),
-			"");
-  owl_viewwin_redisplay(v);
-  owl_global_set_needrefresh(&g);
+  pe->vwin = v = owl_viewwin_new_text(owl_popwin_get_content(pw), "");
+  owl_global_set_viewwin(&g, v);
   owl_viewwin_set_onclose_hook(v, owl_popexec_viewwin_onclose, pe);
+
+  owl_global_push_context(&g, OWL_CTX_POPLESS, v, "popless", NULL);
   pe->refcount++;
 
   if (0 != pipe(pipefds)) {
@@ -110,8 +112,6 @@ void owl_popexec_inputhandler(const owl_io_dispatch *d, void *data)
     pe->pid = 0;
     if (pe->winactive) { 
       owl_viewwin_append_text(pe->vwin, "\n");
-      owl_viewwin_redisplay(pe->vwin);
-      owl_global_set_needrefresh(&g);
     }
     owl_select_remove_io_dispatch(d);
     pe->dispatch = NULL;
@@ -125,7 +125,7 @@ void owl_popexec_inputhandler(const owl_io_dispatch *d, void *data)
 
   if (navail<=0) return;
   if (navail>1024) { navail = 1024; }
-  buf = owl_malloc(navail+1);
+  buf = g_new(char, navail+1);
   owl_function_debugmsg("about to read %d", navail);
   bread = read(d->fd, buf, navail);
   if (bread<0) {
@@ -138,10 +138,8 @@ void owl_popexec_inputhandler(const owl_io_dispatch *d, void *data)
   owl_function_debugmsg("got data:  <%s>", buf);
   if (pe->winactive) {
     owl_viewwin_append_text(pe->vwin, buf);
-    owl_viewwin_redisplay(pe->vwin);
-    owl_global_set_needrefresh(&g);
   }
-  owl_free(buf);
+  g_free(buf);
   
 }
 
@@ -180,6 +178,6 @@ void owl_popexec_unref(owl_popexec *pe)
   pe->refcount--;
   if (pe->refcount<=0) {
     owl_function_debugmsg("doing free of %p", pe);
-    owl_free(pe);
+    g_free(pe);
   }
 }

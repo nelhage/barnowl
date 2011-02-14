@@ -111,6 +111,9 @@ $BarnOwl::Hooks::startup->add("BarnOwl::Module::Jabber::onStart");
 sub do_keep_alive_and_auto_away {
     if ( !$conn->connected() ) {
         # We don't need this timer any more.
+        if (defined $vars{keepAliveTimer}) {
+            $vars{keepAliveTimer}->stop;
+        }
         delete $vars{keepAliveTimer};
         return;
     }
@@ -284,7 +287,7 @@ sub register_owl_commands() {
         jwrite => \&cmd_jwrite,
         {
             summary => "Send a Jabber Message",
-            usage   => "jwrite <jid> [-t <thread>] [-s <subject>] [-a <account>]"
+            usage   => "jwrite <jid> [-t <thread>] [-s <subject>] [-a <account>] [-m <message>]"
         }
     );
     BarnOwl::new_command(
@@ -307,7 +310,8 @@ sub register_owl_commands() {
             summary     => "Jabber MUC related commands.",
             description => "jmuc sends Jabber commands related to MUC.\n\n"
               . "The following commands are available\n\n"
-              . "join <muc>  Join a MUC.\n\n"
+              . "join <muc>[/<nick>]\n"
+              . "            Join a MUC (with a given nickname, or otherwise your JID).\n\n"
               . "part <muc>  Part a MUC.\n"
               . "            The MUC is taken from the current message if not supplied.\n\n"
               . "invite <jid> [<muc>]\n"
@@ -376,8 +380,7 @@ sub cmd_login {
     if ($resource eq '') {
         my $cjidStr = $conn->baseJIDExists($jidStr);
         if ($cjidStr) {
-            BarnOwl::error("Already logged in as $cjidStr.");
-            return;
+            die("Already logged in as $cjidStr.\n");
         }
     }
 
@@ -386,13 +389,11 @@ sub cmd_login {
     $jidStr = $jid->GetJID('full');
 
     if ( !$uid || !$componentname ) {
-        BarnOwl::error("usage: $cmd JID");
-        return;
+        die("usage: $cmd JID\n");
     }
 
     if ( $conn->jidActive($jidStr) ) {
-        BarnOwl::error("Already logged in as $jidStr.");
-        return;
+        die("Already logged in as $jidStr.\n");
     } elsif ($conn->jidExists($jidStr)) {
         return $conn->tryReconnect($jidStr, 1);
     }
@@ -525,16 +526,14 @@ sub cmd_logout {
 
 sub cmd_jlist {
     if ( !( scalar $conn->getJIDs() ) ) {
-        BarnOwl::error("You are not logged in to Jabber.");
-        return;
+        die("You are not logged in to Jabber.\n");
     }
     BarnOwl::popless_ztext( onGetBuddyList() );
 }
 
 sub cmd_jwrite {
     if ( !$conn->connected() ) {
-        BarnOwl::error("You are not logged in to Jabber.");
-        return;
+        die("You are not logged in to Jabber.\n");
     }
 
     my $jwrite_to      = "";
@@ -542,6 +541,7 @@ sub cmd_jwrite {
     my $jwrite_sid     = "";
     my $jwrite_thread  = "";
     my $jwrite_subject = "";
+    my $jwrite_body;
     my ($to, $from);
     my $jwrite_type    = "chat";
 
@@ -553,14 +553,13 @@ sub cmd_jwrite {
         'thread=s'  => \$jwrite_thread,
         'subject=s' => \$jwrite_subject,
         'account=s' => \$from,
-        'id=s'     =>  \$jwrite_sid,
+        'id=s'      => \$jwrite_sid,
+        'message=s' => \$jwrite_body,
     ) or die("Usage: jwrite <jid> [-t <thread>] [-s <subject>] [-a <account>]\n");
     $jwrite_type = 'groupchat' if $gc;
 
     if ( scalar @ARGV != 1 ) {
-        BarnOwl::error(
-            "Usage: jwrite <jid> [-t <thread>] [-s <subject>] [-a <account>]");
-        return;
+        die("Usage: jwrite <jid> [-t <thread>] [-s <subject>] [-a <account>]\n");
     }
     else {
       $to = shift @ARGV;
@@ -569,16 +568,16 @@ sub cmd_jwrite {
     my @candidates = guess_jwrite($from, $to);
 
     unless(scalar @candidates) {
-        die("Unable to resolve JID $to");
+        die("Unable to resolve JID $to\n");
     }
 
     @candidates = grep {defined $_->[0]} @candidates;
 
     unless(scalar @candidates) {
         if(!$from) {
-            die("You must specify an account with -a");
+            die("You must specify an account with -a\n");
         } else {
-            die("Unable to resolve account $from");
+            die("Unable to resolve account $from\n");
         }
     }
 
@@ -593,6 +592,11 @@ sub cmd_jwrite {
         thread  => $jwrite_thread,
         type    => $jwrite_type
     };
+
+    if (defined($jwrite_body)) {
+        process_owl_jwrite($jwrite_body);
+        return;
+    }
 
     if(scalar @candidates > 1) {
         BarnOwl::message(
@@ -630,8 +634,7 @@ sub cmd_jmuc {
     );
     my $func = $jmuc_commands{$cmd};
     if ( !$func ) {
-        BarnOwl::error("jmuc: Unknown command: $cmd");
-        return;
+        die("jmuc: Unknown command: $cmd\n");
     }
 
     {
@@ -653,7 +656,7 @@ sub cmd_jmuc {
             return unless $jid;
         }
         else {
-            BarnOwl::error('You must specify an account with -a <jid>');
+            die("You must specify an account with -a <jid>\n");
         }
         return $func->( $jid, $muc, @ARGV );
     }
@@ -666,7 +669,7 @@ sub jmuc_join {
     GetOptions( 'password=s' => \$password );
 
     $muc = shift @ARGV
-      or die("Usage: jmuc join <muc> [-p <password>] [-a <account>]");
+      or die("Usage: jmuc join <muc> [-p <password>] [-a <account>]\n");
 
     die("Error: Must specify a fully-qualified MUC name (e.g. barnowl\@conference.mit.edu)\n")
         unless $muc =~ /@/;
@@ -679,7 +682,7 @@ sub jmuc_join {
                                                History  => {
                                                    MaxChars => 0
                                                   });
-    $completion_jids{$muc} = 1;
+    $completion_jids{$muc->GetJID('base')} = 1;
     return;
 }
 
@@ -687,12 +690,12 @@ sub jmuc_part {
     my ( $jid, $muc, @args ) = @_;
 
     $muc = shift @args if scalar @args;
-    die("Usage: jmuc part [<muc>] [-a <account>]") unless $muc;
+    die("Usage: jmuc part [<muc>] [-a <account>]\n") unless $muc;
 
     if($conn->getConnectionFromJID($jid)->MUCLeave(JID => $muc)) {
         queue_admin_msg("$jid has left $muc.");
     } else {
-        die("Error: Not joined to $muc");
+        die("Error: Not joined to $muc\n");
     }
 }
 
@@ -702,7 +705,7 @@ sub jmuc_invite {
     my $invite_jid = shift @args;
     $muc = shift @args if scalar @args;
 
-    die('Usage: jmuc invite <jid> [<muc>] [-a <account>]')
+    die("Usage: jmuc invite <jid> [<muc>] [-a <account>]\n")
       unless $muc && $invite_jid;
 
     my $message = Net::Jabber::Message->new();
@@ -717,7 +720,7 @@ sub jmuc_invite {
 sub jmuc_configure {
     my ( $jid, $muc, @args ) = @_;
     $muc = shift @args if scalar @args;
-    die("Usage: jmuc configure [<muc>]") unless $muc;
+    die("Usage: jmuc configure [<muc>]\n") unless $muc;
     my $iq = Net::Jabber::IQ->new();
     $iq->SetTo($muc);
     $iq->SetType('set');
@@ -758,7 +761,7 @@ sub jmuc_presence {
     my ( $jid, $muc, @args ) = @_;
 
     $muc = shift @args if scalar @args;
-    die("Usage: jmuc presence [<muc>]") unless $muc;
+    die("Usage: jmuc presence [<muc>]\n") unless $muc;
 
     if ($muc eq '-a') {
         my $str = "";
@@ -773,7 +776,7 @@ sub jmuc_presence {
     }
     else {
         my $m = $conn->getConnectionFromJID($jid)->FindMUC(jid => $muc);
-        die("No such muc: $muc") unless $m;
+        die("No such muc: $muc\n") unless $m;
         BarnOwl::popless_ztext(jmuc_presence_single($m));
     }
 }
@@ -800,8 +803,7 @@ sub cmd_jroster {
     );
     my $func = $jroster_commands{$cmd};
     if ( !$func ) {
-        BarnOwl::error("jroster: Unknown command: $cmd");
-        return;
+        die("jroster: Unknown command: $cmd\n");
     }
 
     {
@@ -824,7 +826,7 @@ sub cmd_jroster {
             return unless $jid;
         }
         else {
-            BarnOwl::error('You must specify an account with -a <jid>');
+            die("You must specify an account with -a <jid>\n");
         }
         return $func->( $jid, $name, \@groups, $purgeGroups,  @ARGV );
     }
@@ -848,7 +850,7 @@ sub cmd_jaway {
         return unless $jid;
     }
     else {
-        BarnOwl::error('You must specify an account with -a <jid>');
+        die("You must specify an account with -a <jid>\n");
     }
 
     $p->SetShow($show eq "online" ? "" : $show) if $show;
@@ -1233,6 +1235,15 @@ sub j2hash {
         my $room = $props{room} = $from->GetJID('base');
         $completion_jids{$room} = 1;
 
+        my $muc;
+        if ($dir eq 'in') {
+            my $connection = $conn->getConnectionFromSid($props{sid});
+            $muc = $connection->FindMUC(jid => $from);
+        } else {
+            my $connection = $conn->getConnectionFromJID($props{from});
+            $muc = $connection->FindMUC(jid => $to);
+        }
+        $props{from} = $muc->GetFullJID($from) || $props{from};
         $props{sender} = $nick || $room;
         $props{recipient} = $room;
 
@@ -1330,7 +1341,7 @@ sub resolveConnectedJID {
         # Specified account exists
         return $givenJIDStr if ($conn->jidExists($givenJIDStr) );
         return resolveConnectedJID($givenJID->GetJID('base')) if $loose;
-        die("Invalid account: $givenJIDStr");
+        die("Invalid account: $givenJIDStr\n");
     }
 
     # Disambiguate.
@@ -1383,7 +1394,7 @@ sub resolveConnectedJID {
 
         # Not one of ours.
         else {
-            die("Invalid account: $givenJIDStr");
+            die("Invalid account: $givenJIDStr\n");
         }
 
     }
@@ -1429,7 +1440,7 @@ sub guess_jwrite {
     my @matches;
     if($from) {
         $from_jid = resolveConnectedJID($from, 1);
-        die("Unable to resolve account $from") unless $from_jid;
+        die("Unable to resolve account $from\n") unless $from_jid;
         $to_jid = resolveDestJID($to, $from_jid);
         push @matches, [$from_jid, $to_jid] if $to_jid;
     } else {
