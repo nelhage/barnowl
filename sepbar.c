@@ -15,7 +15,8 @@ static void sepbar_redraw(owl_window *w, WINDOW *sepwin, void *user_data)
   const owl_view *v;
   owl_view_iterator *iter;
   int x, y;
-  const char *foo, *appendtosepbar;
+  const char *foo;
+  char *addtosepbar;
 
   iter = owl_view_iterator_delete_later(owl_view_iterator_new());
 
@@ -100,14 +101,11 @@ static void sepbar_redraw(owl_window *w, WINDOW *sepwin, void *user_data)
     wattroff(sepwin, A_BOLD);
   }
 
-  appendtosepbar = owl_global_get_appendtosepbar(&g);
-  if (appendtosepbar && *appendtosepbar) {
-    getyx(sepwin, y, x);
-    wmove(sepwin, y, x+2);
-    waddstr(sepwin, " ");
-    waddstr(sepwin, owl_global_get_appendtosepbar(&g));
-    waddstr(sepwin, " ");
-  }
+  addtosepbar = owl_perlconfig_do_sepbar();
+  getyx(sepwin, y, x);
+  wmove(sepwin, y, x+2);
+  waddstr(sepwin, addtosepbar);
+  g_free(addtosepbar);
 
   getyx(sepwin, y, x);
   wmove(sepwin, y, owl_global_get_cols(&g)-1);
