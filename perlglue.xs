@@ -459,6 +459,15 @@ message_list()
 	OUTPUT:
 		RETVAL
 
+BarnOwl_View_Iterator
+curmsg_iterator()
+	CODE:
+	{
+		RETVAL = owl_view_iterator_new();
+		owl_view_iterator_clone(RETVAL, owl_global_get_curmsg(&g));
+	}
+	OUTPUT:
+		RETVAL
 
 MODULE = BarnOwl		PACKAGE = BarnOwl::Zephyr
 

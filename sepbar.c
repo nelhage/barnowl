@@ -39,11 +39,6 @@ static void sepbar_redraw(owl_window *w, WINDOW *sepwin, void *user_data)
 
   wmove(sepwin, 0, 2);
 
-  if (owl_messagelist_get_size(ml) == 0)
-    waddstr(sepwin, " (-) ");
-  else
-    wprintw(sepwin, " (%i) ", owl_messagelist_get_size(ml));
-
   foo=owl_view_get_filtname(v);
   if (strcmp(foo, owl_global_get_view_home(&g)))
       wattroff(sepwin, A_REVERSE);
