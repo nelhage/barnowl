@@ -260,11 +260,15 @@ sub _new_command {
 }
 
 sub _do_sepbar {
+    my $ret = '';
+
+    $ret .= sprintf ' (%s)', BarnOwl::message_list()->get_size();
+
     my $append = BarnOwl::getvar("appendtosepbar");
     if ($append) {
-        return " $append ";
+        $ret .= " $append ";
     }
-    return "";
+    return $ret;
 }
 
 sub contains {
