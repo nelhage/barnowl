@@ -33,6 +33,7 @@ void owl_select_remove_timer(owl_timer *t)
 {
   GList **timers = owl_global_get_timerlist(&g);
   if (t && g_list_find(*timers, t)) {
+    owl_function_debugmsg("Freeing timer %s: %p", t->name ? t->name : "(unnamed)", t);
     *timers = g_list_remove(*timers, t);
     if(t->destroy) {
       t->destroy(t);

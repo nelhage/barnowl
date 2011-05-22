@@ -579,7 +579,6 @@ remove_timer(timer)
 		owl_timer *t;
 	CODE:
 		t = (owl_timer*)timer;
-		owl_function_debugmsg("Freeing timer %s: %p", t->name ? t->name : "(unnamed)", t);
 		owl_select_remove_timer(t);
 
 MODULE = BarnOwl		PACKAGE = BarnOwl::Editwin
