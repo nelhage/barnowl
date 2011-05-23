@@ -10,15 +10,17 @@ sub new {
     my $cb = $args->{cb};
     die("Invalid callback pased to BarnOwl::Timer\n") unless ref($cb) eq 'CODE';
 
-    my $self = {cb => $cb};
+    my $self = {cb       => $cb,
+                after    => $args->{after} || 0,
+                interval => $args->{interval} || 0};
 
     my $name = $args->{name};
     $name = "(unnamed)" unless defined $name;
 
     bless($self, $class);
 
-    $self->{timer} = BarnOwl::Internal::add_timer($args->{after} || 0,
-                                                  $args->{interval} || 0,
+    $self->{timer} = BarnOwl::Internal::add_timer($self->{after},
+                                                  $self->{interval},
                                                   $self,
                                                   $name);
     return $self;
@@ -34,6 +36,7 @@ sub stop {
 
 sub do_callback {
     my $self = shift;
+    undef $self->{timer} unless $self->{interval};
     $self->{cb}->($self);
 }
 
