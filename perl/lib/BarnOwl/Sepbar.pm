@@ -3,11 +3,11 @@ use warnings;
 
 package BarnOwl::Sepbar;
 
+my $pfx;
 my $count;
 my $view;
 my $start;
 my $iter;
-my $timer;
 
 sub render {
     my $ret = '';
@@ -27,9 +27,11 @@ sub message_list_progress {
     return "($before/$count)"
 }
 
-
 sub messages_before_point {
-    BarnOwl::debug("redraw sepbar");
+    return "$pfx$count";
+}
+
+sub pre_select {
     if (!$view || $view ne BarnOwl::getview()) {
         $count = 1;
         $view  = BarnOwl::getview();
@@ -37,7 +39,7 @@ sub messages_before_point {
         $start = BarnOwl::View::Iterator->new();
         $start->clone($iter);
     }
-    my ($steps, $limit) = (0, 10000);
+    my ($steps, $limit) = (0, 1000);
     my $point = BarnOwl::curmsg_iterator();
 
     my $step = sub {
@@ -66,11 +68,12 @@ sub messages_before_point {
         } elsif ($iter->cmp($point) > 0) {
             $pfx = "<";
         }
-        $timer->stop if $timer;
-        $timer = BarnOwl::Timer->new({after => 0, cb => sub {BarnOwl::command("nop")}});
+        return 1;
     }
-    return "$pfx$count";
+    return 0;
 }
+
+$BarnOwl::Hooks::preSelect->add(\&pre_select);
 
 1;
 

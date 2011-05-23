@@ -38,6 +38,7 @@ use BarnOwl::Editwin;
 use BarnOwl::Completion;
 use BarnOwl::Help;
 use BarnOwl::MessageList;
+use BarnOwl::Sepbar;
 
 use List::Util qw(max);
 

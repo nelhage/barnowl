@@ -7,7 +7,6 @@ use Carp;
 use List::Util qw(first);
 
 use BarnOwl::Commands;
-use BarnOwl::Sepbar;
 
 =head1 BarnOwl::Hooks
 
