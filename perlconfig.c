@@ -192,6 +192,16 @@ char * owl_perlconfig_message_call_method(const owl_message *m, const char *meth
   return out;
 }
 
+static int owl_perlconfig_pre_select_action(owl_ps_action *a, void *data) {
+  char *out;
+  int ret;
+
+  out = owl_perlconfig_execute("BarnOwl::Hooks::_pre_select()");
+  ret = (strcmp(out, "1") == 0);
+  g_free(out);
+  return ret;
+}
+
 
 char *owl_perlconfig_initperl(const char * file, int *Pargc, char ***Pargv, char *** Penv)
 {
@@ -266,6 +276,8 @@ char *owl_perlconfig_initperl(const char * file, int *Pargc, char ***Pargv, char
   if (owl_perlconfig_is_function("BarnOwl::format_msg")) {
     owl_global_set_config_format(&g, 1);
   }
+
+  owl_select_add_pre_select_action(owl_perlconfig_pre_select_action, NULL, NULL);
 
   return(NULL);
 }

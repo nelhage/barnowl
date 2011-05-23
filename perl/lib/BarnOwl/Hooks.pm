@@ -67,6 +67,11 @@ with this hook will be appended and displayed in an admin message,
 with zephyr formatting parsed. The format should be
 "@b(Protocol:)\nSome text.\nMore text.\n"
 
+=item $preSelect
+
+Called once per main loop iteration. If any preSelect callback returns true, the
+main loop will be immediately re-executed after this pass, without sleeping.
+
 =back
 
 =cut
@@ -89,6 +94,7 @@ our $newMessage = BarnOwl::Hook->new;
 our $mainLoop = BarnOwl::MainLoopCompatHook->new;
 our $getBuddyList = BarnOwl::Hook->new;
 our $getQuickstart = BarnOwl::Hook->new;
+our $preSelect = BarnOwl::Hook->new;
 
 # Internal startup/shutdown routines called by the C code
 
@@ -219,6 +225,14 @@ sub _invalidate_filter {
 
 sub _get_quickstart {
     return join("\n", $getQuickstart->run);
+}
+
+sub _pre_select {
+    my $ret = 0;
+    for my $rv ($preSelect->run) {
+        $ret ||= $rv;
+    }
+    return $ret ? "1" : "0";
 }
 
 sub _new_command {
